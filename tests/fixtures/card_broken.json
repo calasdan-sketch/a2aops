@@ -1,0 +1,1 @@
+{"capabilities":"yes","defaultInputModes":[],"description":"Missing name, version, and skills.","skills":[{"description":"x","id":"dup","name":"A","tags":["t"]},{"description":"y","id":"dup","name":"B"},"not-an-object"],"supportedInterfaces":[{"protocolBinding":"SMOKE_SIGNALS","url":"not-a-url"},{"protocolVersion":"1.0","url":"https://ok.example.com/"}]}

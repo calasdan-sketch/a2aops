@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "a2aops"
+version = "1.1.0"
+description = "Operational toolkit for the A2A protocol: AgentCard validation and lint, v0.x to v1.0 migration reports, auth-surface checks, task lifecycle inspection, SSE resubscription, and a local multi-agent playground."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Calas Automations Inc." }]
+keywords = ["a2a", "agent-to-agent", "agents", "protocol", "devtools"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Monitoring",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://calasautomations.com"
+
+[project.scripts]
+a2aops = "a2aops.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+a2aops = ["spec_snapshot.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

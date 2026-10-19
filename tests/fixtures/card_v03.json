@@ -1,0 +1,1 @@
+{"capabilities":{"pushNotifications":false,"streaming":true},"defaultInputModes":["text/plain"],"defaultOutputModes":["text/plain"],"description":"Still on the pre-1.0 card shape.","name":"Legacy Agent","preferredTransport":"JSONRPC","skills":[{"description":"No tags yet.","id":"old-skill","name":"Old Skill"}],"url":"https://legacy.example.com/a2a","version":"0.2.1"}

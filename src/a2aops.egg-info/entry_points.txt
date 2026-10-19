@@ -1,0 +1,2 @@
+[console_scripts]
+a2aops = a2aops.cli:main
