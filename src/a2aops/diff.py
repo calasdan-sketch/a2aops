@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import secreq
 from .card import ERROR, INFO, WARNING, Diagnostic
 
 
@@ -43,28 +44,61 @@ def _skills_by_id(card: dict) -> dict[str, dict]:
     return out
 
 
-def _iface_key(iface: dict) -> tuple[str, str]:
-    return (str(iface.get("protocolBinding", "")), str(iface.get("url", "")))
+def _iface_key(iface: dict) -> tuple[str, str, str]:
+    # tenant is part of the address: clients MUST send it on every request
+    return (str(iface.get("protocolBinding", "")), str(iface.get("url", "")),
+            str(iface.get("tenant") or ""))
+
+
+def _fmt_key(k: tuple[str, str, str]) -> str:
+    return f"{k[0]} {k[1]}" + (f" (tenant {k[2]})" if k[2] else "")
 
 
 def _interfaces(card: dict) -> list[dict]:
-    """v1.0 supportedInterfaces, or the v0.x url/preferredTransport pair."""
+    """v1.0 supportedInterfaces, or the v0.x url/preferredTransport (+ additionalInterfaces)."""
     ifaces = [i for i in _as_list(card.get("supportedInterfaces")) if isinstance(i, dict)]
     if ifaces:
         return ifaces
+    out: list[dict] = []
     if isinstance(card.get("url"), str):
-        return [{"url": card["url"],
-                 "protocolBinding": str(card.get("preferredTransport", "JSONRPC")).upper()}]
-    return []
+        out.append({"url": card["url"],
+                    "protocolBinding": str(card.get("preferredTransport", "JSONRPC")).upper()})
+    for extra in _as_list(card.get("additionalInterfaces")):
+        if isinstance(extra, dict) and isinstance(extra.get("url"), str):
+            iface = {"url": extra["url"],
+                     "protocolBinding": str(extra.get("transport", "JSONRPC")).upper()}
+            if _iface_key(iface) not in {_iface_key(i) for i in out}:
+                out.append(iface)
+    return out
 
 
-def _req_alternatives(card: dict) -> set[frozenset[str]]:
-    """securityRequirements as a set of alternatives (OR of ANDs)."""
-    alts = set()
-    for entry in _as_list(card.get("securityRequirements")):
-        if isinstance(entry, dict):
-            alts.add(frozenset(entry.keys()))
-    return alts
+def _diff_security(old: Any, new: Any, path: str, who: str,
+                   codes: tuple[str, str, str, str]) -> list[Diagnostic]:
+    """Compare requirement alternatives (OR of ANDs) between two owners."""
+    c_added, c_removed, c_new_alt, c_dropped = codes
+    out: list[Diagnostic] = []
+    o_alts, n_alts = secreq.alternative_keys(old), secreq.alternative_keys(new)
+    if not o_alts and n_alts:
+        out.append(_d(ERROR, c_added,
+                      f"{who} now requires authentication — anonymous clients break", path))
+    elif o_alts and n_alts:
+        for alt in sorted(o_alts - n_alts, key=sorted):
+            out.append(_d(ERROR, c_removed,
+                          f"{who}: security alternative {sorted(alt)} removed — clients authenticating that way break",
+                          path))
+        for alt in sorted(n_alts - o_alts, key=sorted):
+            out.append(_d(INFO, c_new_alt, f"{who}: security alternative {sorted(alt)} added", path))
+    elif o_alts and not n_alts:
+        out.append(_d(WARNING, c_dropped,
+                      f"{who}: authentication requirements were removed; confirm this is intentional", path))
+    return out
+
+
+def _effective_modes(skill: dict, card: dict, field: str, default_field: str) -> tuple[set[str], bool]:
+    """Modes a skill really accepts: its own list, else the card defaults."""
+    if field in skill:
+        return set(_strs(skill[field])), True
+    return set(_strs(card.get(default_field))), False
 
 
 def _semver(v: Any) -> tuple[int, ...] | None:
@@ -90,24 +124,24 @@ def diff_cards(old: Any, new: Any) -> list[Diagnostic]:
         k = _iface_key(i)
         if k not in new_keys:
             out.append(_d(ERROR, "D501",
-                          f"interface removed: {k[0]} {k[1]} — clients with this endpoint cached will fail",
+                          f"interface removed: {_fmt_key(k)} — clients with this endpoint cached will fail",
                           "supportedInterfaces"))
     for i in new_if:
         k = _iface_key(i)
         if k not in old_keys:
-            out.append(_d(INFO, "D701", f"interface added: {k[0]} {k[1]}", "supportedInterfaces"))
+            out.append(_d(INFO, "D701", f"interface added: {_fmt_key(k)}", "supportedInterfaces"))
     if old_if and new_if and _iface_key(old_if[0]) != _iface_key(new_if[0]) \
             and _iface_key(old_if[0]) in new_keys:
         out.append(_d(WARNING, "D601",
-                      f"preferred interface changed from {' '.join(_iface_key(old_if[0]))} "
-                      f"to {' '.join(_iface_key(new_if[0]))}",
+                      f"preferred interface changed from {_fmt_key(_iface_key(old_if[0]))} "
+                      f"to {_fmt_key(_iface_key(new_if[0]))}",
                       "supportedInterfaces[0]"))
     old_pv = {_iface_key(i): i.get("protocolVersion") for i in old_if}
     for i in new_if:
         k = _iface_key(i)
         if k in old_pv and old_pv[k] != i.get("protocolVersion"):
             out.append(_d(WARNING, "D602",
-                          f"protocolVersion for {k[0]} {k[1]} changed {old_pv[k]!r} -> {i.get('protocolVersion')!r}",
+                          f"protocolVersion for {_fmt_key(k)} changed {old_pv[k]!r} -> {i.get('protocolVersion')!r}",
                           "supportedInterfaces"))
 
     # --- skills ----------------------------------------------------------
@@ -122,12 +156,19 @@ def diff_cards(old: Any, new: Any) -> list[Diagnostic]:
     for sid in old_sk.keys() & new_sk.keys():
         o, n = old_sk[sid], new_sk[sid]
         p = f"skills[id={sid}]"
-        for field, code in (("inputModes", "D503"), ("outputModes", "D504")):
-            if field in o and field in n:
-                gone = sorted(set(_strs(o[field])) - set(_strs(n[field])))
-                if gone:
-                    out.append(_d(ERROR, code, f"skill '{sid}' no longer accepts/produces {gone} ({field})",
-                                  f"{p}.{field}"))
+        for field, default_field, code in (("inputModes", "defaultInputModes", "D503"),
+                                           ("outputModes", "defaultOutputModes", "D504")):
+            o_modes, o_explicit = _effective_modes(o, old, field, default_field)
+            n_modes, n_explicit = _effective_modes(n, new, field, default_field)
+            if not (o_explicit or n_explicit):
+                continue  # both inherit: the card-level default check covers it
+            gone = sorted(o_modes - n_modes)
+            if gone:
+                verb = "accepts" if field == "inputModes" else "produces"
+                out.append(_d(ERROR, code, f"skill '{sid}' no longer {verb} {gone} ({field})",
+                              f"{p}.{field}"))
+        out.extend(_diff_security(o, n, f"{p}.securityRequirements", f"skill '{sid}'",
+                                  ("D510", "D511", "D705", "D609")))
         lost_tags = sorted(set(_strs(o.get("tags"))) - set(_strs(n.get("tags"))))
         if lost_tags:
             out.append(_d(WARNING, "D603", f"skill '{sid}' dropped tags {lost_tags}; tag-based routers may stop matching it",
@@ -148,29 +189,17 @@ def diff_cards(old: Any, new: Any) -> list[Diagnostic]:
                           f"capabilities.{cap}"))
         elif oc.get(cap) is not True and nc.get(cap) is True:
             out.append(_d(INFO, "D703", f"capability '{cap}' enabled", f"capabilities.{cap}"))
-    old_ext = {e.get("uri") for e in _as_list(oc.get("extensions")) if isinstance(e, dict)}
+    old_ext = {e.get("uri"): e for e in _as_list(oc.get("extensions")) if isinstance(e, dict)}
     new_ext = {e.get("uri"): e for e in _as_list(nc.get("extensions")) if isinstance(e, dict)}
     for uri, ext in new_ext.items():
-        if ext.get("required") is True and uri not in old_ext:
-            out.append(_d(ERROR, "D507", f"new required extension {uri!r} — clients that don't speak it are rejected",
+        if ext.get("required") is True and _as_dict(old_ext.get(uri)).get("required") is not True:
+            what = "is now required" if uri in old_ext else "is new and required"
+            out.append(_d(ERROR, "D507", f"extension {uri!r} {what} — clients that don't speak it are rejected",
                           "capabilities.extensions"))
 
-    # --- security ----------------------------------------------------------
-    o_alts, n_alts = _req_alternatives(old), _req_alternatives(new)
-    if not o_alts and n_alts:
-        out.append(_d(ERROR, "D508",
-                      "agent now requires authentication (securityRequirements added) — anonymous clients break",
-                      "securityRequirements"))
-    elif o_alts and n_alts:
-        for alt in sorted(o_alts - n_alts, key=sorted):
-            out.append(_d(ERROR, "D509",
-                          f"security alternative {sorted(alt)} removed — clients authenticating that way break",
-                          "securityRequirements"))
-        for alt in sorted(n_alts - o_alts, key=sorted):
-            out.append(_d(INFO, "D704", f"security alternative {sorted(alt)} added", "securityRequirements"))
-    if o_alts and not n_alts and "securityRequirements" in old:
-        out.append(_d(WARNING, "D605", "authentication requirements were removed; confirm this is intentional",
-                      "securityRequirements"))
+    # --- security (v1 securityRequirements, either JSON shape, or v0.3 security)
+    out.extend(_diff_security(old, new, "securityRequirements", "agent",
+                              ("D508", "D509", "D704", "D605")))
     os_, ns_ = _as_dict(old.get("securitySchemes")), _as_dict(new.get("securitySchemes"))
     for name in os_.keys() & ns_.keys():
         if os_[name] != ns_[name]:

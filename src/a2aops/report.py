@@ -13,7 +13,10 @@ a SARIF logical location.
 from __future__ import annotations
 
 import json
+import os
 import re
+import urllib.parse
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import Iterable, Optional
 
 from . import __version__
@@ -41,6 +44,35 @@ def to_json(diags: list[Diagnostic], *, command: str, source: str,
     if extra:
         doc.update(extra)
     return json.dumps(doc, indent=2)
+
+
+def path_to_uri(path: str, cwd: Optional[str] = None) -> str:
+    """Turn a local path into a SARIF ``artifactLocation.uri``.
+
+    Paths under the working directory become relative, percent-encoded URI
+    references (``cards/my%20card.json``) that GitHub code scanning maps to
+    repository files. Anything else becomes an absolute ``file://`` URI.
+    Windows paths (``C:\\x\\card.json``) never leak a fake ``c:`` scheme.
+    """
+    base = Path(cwd or os.getcwd()).resolve()
+    p = Path(os.path.expanduser(path))
+    try:
+        absolute = (p if p.is_absolute() else base / p).resolve()
+    except (OSError, RuntimeError):
+        absolute = base / p
+    try:
+        rel: PurePath = absolute.relative_to(base)
+        return urllib.parse.quote(rel.as_posix(), safe="/")
+    except ValueError:
+        pass
+    try:
+        return absolute.as_uri()
+    except ValueError:
+        # not absolute on this OS (e.g. a Windows path seen on POSIX)
+        win = PureWindowsPath(path)
+        if win.drive:
+            return "file:///" + urllib.parse.quote(win.as_posix(), safe="/:")
+        return urllib.parse.quote(PurePath(path).as_posix(), safe="/")
 
 
 def _last_key(path: str) -> Optional[str]:

@@ -82,15 +82,17 @@ jobs:
 
 SARIF annotations point at the line of the offending key when the source is a
 local file (best-effort key lookup) and always carry the JSON path
-(`skills[0].tags`) as a logical location. Use a repo-relative path so GitHub can
-map it to the file.
+(`skills[0].tags`) as a logical location. File locations are written as
+percent-encoded URIs relative to the working directory (`cards/my%20card.json`),
+which is what GitHub needs to map them to repository files; files outside the
+working directory become absolute `file://` URIs.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `a2aops card check <src>` | `src` is a base URL, a JSON file, or `-`. For URLs: fetch `/.well-known/agent-card.json` (falls back to legacy `/.well-known/agent.json` and tells you). Validate against the A2A v1.0 schema and lint for robustness. Exit 1 on errors (`--strict`: on warnings too). |
-| `a2aops card diff <old> <new>` | Breaking-change report between two cards (each a URL, file, or one `-`). Errors = breaks existing clients (removed skill/interface/input mode, capability turned off, auth newly required, new required extension); warnings = risky (preferred interface reordered, tags dropped, version not bumped, breaking change without a major bump); infos = additive. |
+| `a2aops card diff <old> <new>` | Breaking-change report between two cards (each a URL, file, or one `-`). Errors = breaks existing clients (removed skill/interface/input mode — including a skill narrowing the modes it used to inherit — capability turned off, auth newly required or an auth alternative removed at card or skill level, an extension becoming required, an interface's `tenant` changing); warnings = risky (preferred interface reordered, tags dropped, version not bumped, breaking change without a major bump); infos = additive. |
 | `a2aops card fetch <base>` | Print the raw card JSON. |
 | `a2aops compat <src>` | Detect the card version and print a v0.x → v1.0 migration checklist. Exit 1 if migration actions remain. `--format json` available. |
 | `a2aops auth <src>` | Check the declared auth surface: every `securityRequirements` entry must reference a declared scheme; OIDC discovery documents must resolve and expose a `token_endpoint`; OAuth2 flows need token URLs. Read-only. `--offline` skips remote fetches. Card-supplied URLs pass an SSRF guard (see Security). |
@@ -107,8 +109,23 @@ serve their card outside `/.well-known`.
 Exit codes: `0` clean · `1` findings reported · `2` usage/operational failure.
 
 Source resolution is explicit: `-` is stdin; a path that exists on disk is read
-as a file (a malformed file is an error, never silently retried as a URL);
-anything else is treated as a URL (`https://` is assumed if no scheme is given).
+as a file, exactly once and size-capped (a malformed file is an error, never
+silently retried as a URL); something that *looks* like a path (`*.json`, `./x`,
+`/x`, `~/x`, `C:\x`) but does not exist is "file not found" — the name is never
+sent to DNS; anything else is treated as a URL (`https://` is assumed if no
+scheme is given).
+
+Security requirements are read in the A2A v1.0 wire shape from `a2a.proto`
+(`SecurityRequirement { map<string, StringList> schemes }`):
+
+```json
+"securityRequirements": [{"schemes": {"oidc": {"list": ["bookings:write"]}}}]
+```
+
+at card level and on individual skills. The pre-1.0 OpenAPI shape
+(`[{"oidc": ["bookings:write"]}]`) and the v0.3 `security` field are still
+understood, and are flagged (`I207`/`I208`, plus a `compat` action) so you can
+migrate.
 
 ## Diagnostic codes
 
@@ -118,7 +135,7 @@ anything else is treated as a URL (`https://` is assumed if no scheme is given).
 | `W2xx` / `I2xx` | Card lint (plain-HTTP endpoint, unused scheme, thin description, …) |
 | `E3xx` / `W3xx` / `I3xx` | Auth surface (`E341` ghost scheme, `E303` unreachable OIDC discovery, `W307` fetch refused by SSRF guard, …) |
 | `T4xx` | Task lifecycle (terminal escape, `UNSPECIFIED`, removed `unknown` state) |
-| `D5xx` | `card diff`: breaking for existing clients |
+| `D5xx` | `card diff`: breaking for existing clients (`D510`/`D511`: skill-level auth) |
 | `D6xx` | `card diff`: risky / likely to surprise clients |
 | `D7xx` | `card diff`: additive or informational |
 
@@ -129,13 +146,19 @@ AgentCards are attacker-controllable input, so `a2aops` treats them that way:
 - **SSRF guard.** URLs you type are trusted. URLs that come *from a card*
   (e.g. an OIDC `openIdConnectUrl`) must be HTTPS, must not embed credentials,
   and must resolve only to public addresses — loopback, private, link-local
-  (cloud metadata `169.254.169.254`), reserved and multicast ranges are refused,
-  including IPv4-mapped IPv6 and decimal/hex IP tricks. Every redirect hop is
+  (cloud metadata `169.254.169.254`), carrier-grade NAT `100.64.0.0/10`
+  (includes Alibaba Cloud's `100.100.100.200` metadata), benchmarking,
+  documentation, reserved and multicast ranges are refused. IPv6 addresses that
+  tunnel to IPv4 (IPv4-mapped, NAT64 `64:ff9b::/96`, 6to4, Teredo) are judged
+  by the IPv4 address they reach, and decimal/hex IP spellings are resolved
+  first. The ranges are listed explicitly, so results are the same on Python
+  3.10–3.13 (whose built-in `is_global` tables differ). Every redirect hop is
   re-checked. `--allow-private` turns this off for local development stacks.
 - **Size caps.** Network JSON bodies are capped at 2 MiB, local files and stdin
   at 16 MiB.
-- **Terminal-safe output.** Control characters, ANSI escapes and Unicode bidi
-  overrides from card text are escaped before printing, so a hostile card can't
+- **Terminal-safe output.** Control characters, ANSI escapes, Unicode bidi
+  marks/overrides/isolates, zero-width characters and line separators from
+  card, task and stream text are escaped before printing, so a hostile card can't
   rewrite your terminal or fake an "OK". JSON/SARIF output is JSON-escaped.
 
 ## How it compares
@@ -152,7 +175,7 @@ that the feature cannot exist.
 | [capiscio/validate-a2a](https://awesome.ecosyste.ms/projects/github.com%2Fcapiscio%2Fvalidate-a2a) | GitHub Action | JWS signature verification, compliance/trust/availability scores | Page states it targets the A2A v0.3.0 spec |
 | [a2a-compliance](https://awesome.ecosyste.ms/projects/github.com%2FUltraSkye%2Fa2a-compliance) | TypeScript CLI, Action, dashboard | Security probes (SSRF, CORS, DNS rebinding), JSON/JUnit/SARIF, snapshot baselines | Node toolchain |
 | [a2acli](https://pkg.go.dev/github.com/ghchinoy/a2acli@v1.3.0) | Go CLI | `send`/`watch`/`get` with a streaming TUI, JSON/NDJSON output | Client tool; card validation not documented |
-| **a2aops** | Python CLI + library | Card-to-card breaking-change diff, v0.x → v1.0 migration report, SARIF, SSRF-guarded auth checks, SSE resubscribe, local playground | Zero dependencies; no JWS signature check or live conformance probe yet (see Limitations) |
+| **a2aops** | Python CLI + library | Card-to-card breaking-change diff (card and skill level, v0.3 and v1.0 shapes), v0.x → v1.0 migration report, SARIF, SSRF-guarded auth checks, SSE resubscribe, local playground | Zero dependencies; no JWS signature check or live conformance probe yet (see Limitations) |
 
 ## Design decisions (from the expert panel)
 
@@ -210,14 +233,15 @@ that the feature cannot exist.
 
 ```bash
 cd a2aops
-PYTHONPATH=src python3 -m unittest discover -s tests   # 145 tests, zero deps
+PYTHONPATH=src python3 -m unittest discover -s tests   # 187 tests, zero deps
 python3 -m compileall -q src tests
 ```
 
 Layout: `src/a2aops/` — `card.py` (fetch/validate/lint), `compat.py`,
 `authcheck.py`, `states.py` (wire-vocabulary normalization), `sse.py`,
 `tasks.py` (inspector + poll), `playground.py` (mock agents + scenarios),
-`diff.py` (breaking-change rules), `report.py` (JSON/SARIF), `net.py` (size
+`diff.py` (breaking-change rules), `secreq.py` (security-requirement shapes),
+`report.py` (JSON/SARIF), `net.py` (size
 caps, SSRF guard, terminal-safe output), `cli.py`, `spec.py` +
 `spec_snapshot.json` (pinned spec knowledge).
 

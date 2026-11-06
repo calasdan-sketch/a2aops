@@ -49,14 +49,16 @@ class UnsafeURL(ValueError):
 
 def read_capped(resp, limit: int = MAX_DOC_BYTES) -> bytes:
     """Read at most ``limit`` bytes from ``resp``; raise if there is more."""
-    declared = resp.headers.get("Content-Length") if getattr(resp, "headers", None) else None
-    if declared is not None:
+    headers = getattr(resp, "headers", None)
+    declared_raw = headers.get("Content-Length") if headers else None
+    declared: Optional[int] = None
+    if declared_raw is not None:
         try:
-            if int(declared) > limit:
-                raise ResponseTooLarge(
-                    f"response declares {int(declared)} bytes, over the {limit}-byte cap")
+            declared = int(declared_raw)
         except ValueError:
-            pass  # malformed header: fall through to the counted read
+            declared = None  # malformed header: rely on the counted read
+    if declared is not None and declared > limit:
+        raise ResponseTooLarge(f"response declares {declared} bytes, over the {limit}-byte cap")
     body = resp.read(limit + 1)
     if len(body) > limit:
         raise ResponseTooLarge(f"response exceeds the {limit}-byte cap")
@@ -73,12 +75,42 @@ def _default_resolver(host: str) -> list[str]:
     return sorted({info[4][0] for info in infos})
 
 
+# Special-purpose ranges, listed explicitly so the verdict does not depend on
+# the running Python's ``ipaddress`` tables (they changed across 3.10-3.13).
+_BLOCKED_V4 = [ipaddress.ip_network(n) for n in (
+    "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+    "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24",
+    "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+    "224.0.0.0/4", "240.0.0.0/4")]
+_BLOCKED_V6 = [ipaddress.ip_network(n) for n in (
+    "::/128", "::1/128", "64:ff9b:1::/48", "100::/64", "2001::/23",
+    "2001:db8::/32", "3fff::/20", "fc00::/7", "fe80::/10", "fec0::/10", "ff00::/8")]
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _embedded_v4(ip: ipaddress.IPv6Address) -> Optional[ipaddress.IPv4Address]:
+    """IPv4 address an IPv6 address tunnels to (mapped, NAT64, 6to4, Teredo)."""
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip in _NAT64:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if ip.teredo is not None:
+        return ip.teredo[1]  # the client endpoint the tunnel delivers to
+    return None
+
+
 def _is_public_ip(addr: str) -> bool:
     ip = ipaddress.ip_address(addr.split("%", 1)[0])  # drop IPv6 zone id
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return not (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_multicast or ip.is_reserved or ip.is_unspecified)
+    if isinstance(ip, ipaddress.IPv6Address):
+        inner = _embedded_v4(ip)
+        if inner is not None:
+            ip = inner
+    if ip.is_multicast or not ip.is_global:
+        return False
+    blocked = _BLOCKED_V4 if isinstance(ip, ipaddress.IPv4Address) else _BLOCKED_V6
+    return not any(ip in net for net in blocked)
 
 
 def check_public_url(url: str, resolver: Optional[Resolver] = None) -> None:
@@ -142,9 +174,13 @@ def open_untrusted(url: str, timeout: float, *, allow_private: bool = False,
 
 # ------------------------------------------------------------ safe output
 
-# C0 controls except TAB and LF, DEL, C1 controls, and the Unicode bidi
-# overrides used in "Trojan Source" style display spoofing.
-_UNSAFE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]")
+# C0 controls except TAB and LF, DEL, C1 controls, bidi marks/overrides/
+# isolates ("Trojan Source" spoofing), zero-width and invisible format
+# characters, line/paragraph separators, and the BOM. Written as escapes so
+# the source file itself contains no invisible characters.
+_UNSAFE = re.compile(
+    "[\x00-\x08\x0b-\x1f\x7f-\x9f\u00ad\u061c\u180e\u200b-\u200f"
+    "\u2028-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb]")
 
 
 def clean(text: object) -> str:

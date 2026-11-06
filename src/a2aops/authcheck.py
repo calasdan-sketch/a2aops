@@ -16,6 +16,7 @@ import json
 import urllib.parse
 from typing import Optional
 
+from . import secreq
 from .card import ERROR, INFO, WARNING, Diagnostic
 from .net import UnsafeURL, open_untrusted, read_capped
 
@@ -152,18 +153,21 @@ def check_auth_surface(card: dict, timeout: float = 10.0,
         return [Diagnostic(ERROR, "E300", "card must be a JSON object", "")]
 
     schemes = card.get("securitySchemes") or {}
-    reqs = card.get("securityRequirements") or []
     if not isinstance(schemes, dict):
         return [Diagnostic(ERROR, "E300", "'securitySchemes' must be an object", "securitySchemes")]
 
-    # 1. every requirement must reference a declared scheme
-    if isinstance(reqs, list):
-        for n, entry in enumerate(reqs):
-            p = f"securityRequirements[{n}]"
-            if not isinstance(entry, dict):
+    # 1. every requirement (card level and skill level, v1.0 {"schemes": {...}}
+    #    shape or legacy OpenAPI shape) must reference a declared scheme
+    for prefix, owner in secreq.owners(card):
+        field = secreq.requirements_field(owner)
+        if field is None or not isinstance(owner.get(field), list):
+            continue
+        for alt in secreq.parse(owner[field]):
+            p = f"{prefix}{field}[{alt.index}]"
+            if alt.shape == secreq.INVALID:
                 diags.append(Diagnostic(ERROR, "E340", "requirement entry must be an object", p))
                 continue
-            for scheme_name in entry:
+            for scheme_name in alt.schemes:
                 if scheme_name not in schemes:
                     diags.append(Diagnostic(
                         ERROR, "E341",

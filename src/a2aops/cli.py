@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 
 from . import __version__
@@ -28,7 +27,7 @@ from . import sse as sse_mod
 from . import tasks as tasks_mod
 from . import report as report_mod
 from .card import (CardFetchError, check_card, fetch_card, format_diagnostics,
-                   load_card_source)
+                   read_card_source)
 from .diff import diff_cards
 from .net import clean
 from .playground import demo_scenario, run_scenario, Scenario
@@ -36,19 +35,18 @@ from .spec import spec_version
 
 
 def _load(args, source: str):
-    """Load a card from a URL, file, or '-'. Returns (card, info, label, text)."""
-    card, info = load_card_source(source, timeout=getattr(args, "timeout", 10.0),
-                                  card_path=getattr(args, "card_path", None))
-    if info is not None:
-        return card, info, info.resolved_url, None
-    if source == "-":
-        return card, None, "stdin", None
-    try:
-        with open(source, encoding="utf-8-sig") as f:
-            text = f.read()
-    except OSError:
-        text = None
-    return card, None, source.replace(os.sep, "/"), text
+    """Load a card from a URL, file, or '-'. Returns (card, info, label, text).
+
+    The file is read exactly once; ``text`` is that same content (used for
+    SARIF line lookup). ``label`` is a valid URI reference for SARIF.
+    """
+    src = read_card_source(source, timeout=getattr(args, "timeout", 10.0),
+                           card_path=getattr(args, "card_path", None))
+    if src.kind == "url":
+        return src.card, src.info, src.info.resolved_url, None
+    if src.kind == "stdin":
+        return src.card, None, "stdin", src.text
+    return src.card, None, report_mod.path_to_uri(source), src.text
 
 
 def _emit(args, diags, *, command: str, label: str, text=None,
@@ -82,7 +80,7 @@ def cmd_card_check(args) -> int:
         if info.legacy_fallback:
             banner.append("note: v1.0 path 404'd; fell back to legacy /.well-known/agent.json")
     else:
-        banner.append(f"read {label}")
+        banner.append(f"read {'stdin' if args.base == '-' else args.base}")
     return _emit(args, check_card(card), command="card-check", label=label,
                  text=text, banner=banner)
 
@@ -92,13 +90,14 @@ def cmd_card_diff(args) -> int:
         print("error: only one of OLD/NEW can be '-' (stdin)", file=sys.stderr)
         return 2
     try:
-        old, _, old_label, _ = _load(args, args.old)
+        old, _, _, _ = _load(args, args.old)
         new, _, new_label, new_text = _load(args, args.new)
     except CardFetchError as e:
         return _err(e)
     diags = diff_cards(old, new)
     return _emit(args, diags, command="card-diff", label=new_label, text=new_text,
-                 banner=[f"diff {old_label} -> {new_label}"],
+                 banner=[f"diff {'stdin' if args.old == '-' else args.old} -> "
+                         f"{'stdin' if args.new == '-' else args.new}"],
                  ok_text="OK: no breaking or notable changes detected.")
 
 
@@ -161,14 +160,13 @@ def cmd_task_inspect(args) -> int:
     try:
         observations = tasks_mod.observations_from_jsonl(args.events)
     except (OSError, ValueError) as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
+        return _err(e)
     insp = tasks_mod.TaskInspector()
     for obs in observations:
         insp.observe(obs)
-    print(insp.format())
+    print(insp.format())  # every line already passes through clean()
     print("---")
-    print(json.dumps(insp.summary(), indent=2))
+    print(json.dumps(insp.summary(), indent=2))  # JSON-escaped (ASCII)
     return 1 if any(d.severity == "error" for d in insp.report()) else 0
 
 
@@ -188,7 +186,7 @@ def cmd_stream(args) -> int:
     print(f"events={stats.events} duplicates_skipped={stats.duplicates} "
           f"reconnects={stats.reconnects} closed_on_terminal={stats.closed_on_terminal}")
     for note in stats.notes:
-        print(f"note: {note}")
+        print(clean(f"note: {note}"))
     return 0
 
 
@@ -200,7 +198,7 @@ def cmd_play_demo(args) -> int:
     for t in report.tasks:
         task = t["task"]
         state = (task.get("status") or {}).get("state")
-        print(f"  {t['from']} -> {t['to']}: {task.get('id')} ended {state}")
+        print(clean(f"  {t['from']} -> {t['to']}: {task.get('id')} ended {state}"))
     return 0
 
 
@@ -208,8 +206,7 @@ def cmd_play_run(args) -> int:
     try:
         scenario = Scenario.from_json(args.scenario)
     except (OSError, ValueError) as e:
-        print(f"error: cannot load scenario: {e}", file=sys.stderr)
-        return 2
+        return _err(f"cannot load scenario: {e}")
     report = run_scenario(scenario, args.log)
     print(f"agents: {', '.join(report.agents)}  steps: {report.steps}  log: {report.log_path}")
     return 0
