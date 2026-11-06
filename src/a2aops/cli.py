@@ -1,10 +1,11 @@
 """a2aops command-line interface.
 
 Subcommands:
-  card check <base>        fetch + validate + lint an AgentCard
+  card check <src>         validate + lint an AgentCard (URL, file, or -)
   card fetch <base>        print the raw AgentCard JSON
-  compat <base|file>       v0.x -> v1.0 migration report
-  auth <base>              read-only auth-surface consistency check
+  card diff <old> <new>    breaking-change report between two cards
+  compat <src>             v0.x -> v1.0 migration report
+  auth <src>               read-only auth-surface consistency check
   task poll <base> <id>    poll a task to a terminal state, report violations
   task inspect <events>    inspect a JSONL event log for lifecycle violations
   stream <base> <id>       SSE stream with resubscribe + dedupe
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import __version__
@@ -24,83 +26,128 @@ from . import authcheck as auth_mod
 from . import compat as compat_mod
 from . import sse as sse_mod
 from . import tasks as tasks_mod
+from . import report as report_mod
 from .card import (CardFetchError, check_card, fetch_card, format_diagnostics,
-                   has_errors)
+                   load_card_source)
+from .diff import diff_cards
+from .net import clean
 from .playground import demo_scenario, run_scenario, Scenario
 from .spec import spec_version
 
 
-def _read_card_source(source: str):
-    """A card source is a base URL, or a path to a JSON file, or '-' for stdin."""
+def _load(args, source: str):
+    """Load a card from a URL, file, or '-'. Returns (card, info, label, text)."""
+    card, info = load_card_source(source, timeout=getattr(args, "timeout", 10.0),
+                                  card_path=getattr(args, "card_path", None))
+    if info is not None:
+        return card, info, info.resolved_url, None
     if source == "-":
-        return json.load(sys.stdin), None
+        return card, None, "stdin", None
     try:
-        with open(source, encoding="utf-8") as f:
-            return json.load(f), None
-    except (OSError, ValueError):
-        pass
-    card, info = fetch_card(source)
-    return card, info
+        with open(source, encoding="utf-8-sig") as f:
+            text = f.read()
+    except OSError:
+        text = None
+    return card, None, source.replace(os.sep, "/"), text
+
+
+def _emit(args, diags, *, command: str, label: str, text=None,
+          banner=(), ok_text="OK: no issues found.") -> int:
+    fmt = getattr(args, "format", "text")
+    strict = getattr(args, "strict", False)
+    if fmt == "json":
+        print(report_mod.to_json(diags, command=command, source=label, strict=strict))
+    elif fmt == "sarif":
+        print(report_mod.to_sarif(diags, command=command, artifact_uri=label, source_text=text))
+    else:
+        for line in banner:
+            print(clean(line))
+        print(format_diagnostics(diags) if diags else ok_text)
+    return 1 if report_mod.failed(diags, strict) else 0
+
+
+def _err(e) -> int:
+    print(f"error: {clean(e)}", file=sys.stderr)
+    return 2
 
 
 def cmd_card_check(args) -> int:
     try:
-        card, info = fetch_card(args.base, timeout=args.timeout)
+        card, info, label, text = _load(args, args.base)
     except CardFetchError as e:
-        print(f"error: {e}", file=sys.stderr)
+        return _err(e)
+    banner = []
+    if info is not None:
+        banner.append(f"fetched {info.resolved_url} (HTTP {info.status}, {info.elapsed_ms}ms)")
+        if info.legacy_fallback:
+            banner.append("note: v1.0 path 404'd; fell back to legacy /.well-known/agent.json")
+    else:
+        banner.append(f"read {label}")
+    return _emit(args, check_card(card), command="card-check", label=label,
+                 text=text, banner=banner)
+
+
+def cmd_card_diff(args) -> int:
+    if args.old == "-" and args.new == "-":
+        print("error: only one of OLD/NEW can be '-' (stdin)", file=sys.stderr)
         return 2
-    print(f"fetched {info.resolved_url} (HTTP {info.status}, {info.elapsed_ms}ms)")
-    if info.legacy_fallback:
-        print("note: v1.0 path 404'd; fell back to legacy /.well-known/agent.json")
-    diags = check_card(card)
-    print(format_diagnostics(diags))
-    return 1 if has_errors(diags) else 0
+    try:
+        old, _, old_label, _ = _load(args, args.old)
+        new, _, new_label, new_text = _load(args, args.new)
+    except CardFetchError as e:
+        return _err(e)
+    diags = diff_cards(old, new)
+    return _emit(args, diags, command="card-diff", label=new_label, text=new_text,
+                 banner=[f"diff {old_label} -> {new_label}"],
+                 ok_text="OK: no breaking or notable changes detected.")
 
 
 def cmd_card_fetch(args) -> int:
     try:
-        card, info = fetch_card(args.base, timeout=args.timeout)
+        card, info = fetch_card(args.base, timeout=args.timeout, card_path=args.card_path)
     except CardFetchError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
+        return _err(e)
     print(json.dumps(card, indent=2))
     return 0
 
 
 def cmd_compat(args) -> int:
     try:
-        card, info = _read_card_source(args.source)
+        card, info, label, _ = _load(args, args.source)
     except CardFetchError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
-    except (OSError, ValueError) as e:
-        print(f"error: cannot read card source: {e}", file=sys.stderr)
-        return 2
-    print(f"a2aops {__version__} — spec snapshot v{spec_version()}")
-    print(f"detected card version: {compat_mod.detect_card_version(card)}")
+        return _err(e)
+    version = compat_mod.detect_card_version(card)
     items = compat_mod.compat_report(card, info)
-    print(compat_mod.format_report(items))
-    return 1 if compat_mod.needs_migration(items) else 0
+    needs = compat_mod.needs_migration(items)
+    if args.format == "json":
+        print(json.dumps({"tool": "a2aops", "version": __version__, "command": "compat",
+                          "source": label, "spec_version": spec_version(),
+                          "detected_card_version": version, "ok": not needs,
+                          "items": [i.to_dict() for i in items]}, indent=2))
+    else:
+        print(f"a2aops {__version__} — spec snapshot v{spec_version()}")
+        print(f"detected card version: {version}")
+        print(compat_mod.format_report(items))
+    return 1 if needs else 0
 
 
 def cmd_auth(args) -> int:
     try:
-        card, info = fetch_card(args.base, timeout=args.timeout)
+        card, info, label, text = _load(args, args.base)
     except CardFetchError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
+        return _err(e)
     diags = auth_mod.check_auth_surface(card, timeout=args.timeout,
-                                        check_remote=not args.offline)
-    print(format_diagnostics(diags) if diags
-          else "OK: auth surface is consistent (no credentials were requested).")
-    return 1 if has_errors(diags) else 0
+                                        check_remote=not args.offline,
+                                        allow_private=args.allow_private)
+    return _emit(args, diags, command="auth", label=label, text=text,
+                 ok_text="OK: auth surface is consistent (no credentials were requested).")
 
 
 def cmd_task_poll(args) -> int:
     binding = tasks_mod.rest_get_task if args.binding == "rest" else tasks_mod.jsonrpc_get_task
 
     def on_obs(obs):
-        print(f"{obs.task_id}: {obs.state}" + (f" — {obs.message}" if obs.message else ""))
+        print(clean(f"{obs.task_id}: {obs.state}" + (f" — {obs.message}" if obs.message else "")))
 
     insp = tasks_mod.poll_task(args.base, args.task_id, fetch=binding,
                                interval=args.interval, timeout=args.timeout,
@@ -129,7 +176,7 @@ def cmd_stream(args) -> int:
     received: list[str] = []
 
     def on_event(ev):
-        line = f"[{ev.id or '-'}] {ev.event or 'message'}: {ev.data[:200]}"
+        line = clean(f"[{ev.id or '-'}] {ev.event or 'message'}: {ev.data[:200]}")
         print(line)
         received.append(line)
 
@@ -177,24 +224,50 @@ def build_parser() -> argparse.ArgumentParser:
 
     c = sub.add_parser("card", help="fetch / validate / lint AgentCards")
     csub = c.add_subparsers(dest="card_cmd", required=True)
-    cc = csub.add_parser("check", help="fetch, validate, and lint a card")
-    cc.add_argument("base", help="agent base URL, e.g. https://agent.example.com")
-    cc.add_argument("--timeout", type=float, default=10.0)
+    src_help = "agent base URL, a card JSON file, or '-' for stdin"
+
+    def fetch_opts(sp):
+        sp.add_argument("--timeout", type=float, default=10.0)
+        sp.add_argument("--card-path", default=None, metavar="PATH",
+                        help="fetch the card from this path instead of /.well-known discovery")
+
+    def out_opts(sp, sarif=True):
+        sp.add_argument("--format", choices=["text", "json", "sarif"] if sarif else ["text", "json"],
+                        default="text", help="output format (sarif = GitHub code scanning)")
+        if sarif:
+            sp.add_argument("--strict", action="store_true", help="warnings also fail (exit 1)")
+
+    cc = csub.add_parser("check", help="validate and lint a card (URL, file, or stdin)")
+    cc.add_argument("base", metavar="source", help=src_help)
+    fetch_opts(cc)
+    out_opts(cc)
     cc.set_defaults(func=cmd_card_check)
     cf = csub.add_parser("fetch", help="print the raw AgentCard JSON")
     cf.add_argument("base")
-    cf.add_argument("--timeout", type=float, default=10.0)
+    fetch_opts(cf)
     cf.set_defaults(func=cmd_card_fetch)
+    cd = csub.add_parser("diff", help="report breaking changes between two cards")
+    cd.add_argument("old", help="the card clients use today (" + src_help + ")")
+    cd.add_argument("new", help="the proposed card")
+    fetch_opts(cd)
+    out_opts(cd)
+    cd.set_defaults(func=cmd_card_diff)
 
     cp = sub.add_parser("compat", help="v0.x -> v1.0 migration report")
-    cp.add_argument("source", help="base URL, JSON file, or '-' for stdin")
+    cp.add_argument("source", help=src_help)
+    fetch_opts(cp)
+    out_opts(cp, sarif=False)
     cp.set_defaults(func=cmd_compat)
 
     au = sub.add_parser("auth", help="read-only auth-surface consistency check")
-    au.add_argument("base")
-    au.add_argument("--timeout", type=float, default=10.0)
+    au.add_argument("base", metavar="source", help=src_help)
+    fetch_opts(au)
+    out_opts(au)
     au.add_argument("--offline", action="store_true",
                     help="skip fetching remote OIDC discovery documents")
+    au.add_argument("--allow-private", action="store_true",
+                    help="let card-supplied URLs reach loopback/private addresses "
+                         "(local dev only; disables the SSRF guard)")
     au.set_defaults(func=cmd_auth)
 
     t = sub.add_parser("task", help="task lifecycle tools")

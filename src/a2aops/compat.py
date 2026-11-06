@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from .card import FetchInfo
+from .net import clean
 from .spec import load_spec
 
 OK = "ok"
@@ -26,7 +27,10 @@ class MigrationItem:
 
     def __str__(self) -> str:
         mark = {"ok": "✓", "action": "✗", "info": "•"}[self.status]
-        return f"[{mark}] {self.check}: {self.detail}"
+        return f"[{mark}] {self.check}: {clean(self.detail)}"
+
+    def to_dict(self) -> dict:
+        return {"status": self.status, "check": self.check, "detail": self.detail}
 
 
 def detect_card_version(card: Any) -> str:

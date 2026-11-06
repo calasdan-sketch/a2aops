@@ -19,6 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .net import USER_AGENT, ResponseTooLarge, clean, read_capped
 from .spec import load_spec
 
 ERROR = "error"
@@ -34,8 +35,13 @@ class Diagnostic:
     path: str = ""  # dotted path into the card, e.g. "skills[2].tags"
 
     def __str__(self) -> str:
-        loc = f" [{self.path}]" if self.path else ""
-        return f"{self.severity.upper()} {self.code}{loc}: {self.message}"
+        # message/path can echo attacker-controlled card text: escape controls
+        loc = f" [{clean(self.path)}]" if self.path else ""
+        return f"{self.severity.upper()} {self.code}{loc}: {clean(self.message)}"
+
+    def to_dict(self) -> dict:
+        return {"severity": self.severity, "code": self.code,
+                "message": self.message, "path": self.path}
 
 
 @dataclass
@@ -53,19 +59,28 @@ class CardFetchError(RuntimeError):
     """Raised when the AgentCard cannot be fetched or parsed."""
 
 
-def fetch_card(base_url: str, timeout: float = 10.0) -> tuple[dict, FetchInfo]:
+def fetch_card(base_url: str, timeout: float = 10.0,
+               card_path: Optional[str] = None) -> tuple[dict, FetchInfo]:
     """Fetch an AgentCard from a base URL.
 
     ``base_url`` may be an origin (``https://agent.example.com``) or include a
     path prefix (``https://example.com/agents/weather``). Returns the parsed
     card and fetch metadata. Raises CardFetchError on any failure.
+
+    ``card_path`` overrides discovery (e.g. ``/cards/weather.json``) for agents
+    that serve their card somewhere non-standard; no legacy fallback is tried.
+    Bodies over 2 MiB are refused.
     """
     spec = load_spec()
     base = base_url.rstrip("/")
     if "://" not in base:
         base = "https://" + base
-
-    candidates = [spec["card_path"]] + list(spec["legacy_card_paths"])
+    if card_path is not None:
+        if not card_path.startswith("/") or "://" in card_path:
+            raise CardFetchError(f"--card-path must be an absolute path like /x/card.json, got {card_path!r}")
+        candidates = [card_path]
+    else:
+        candidates = [spec["card_path"]] + list(spec["legacy_card_paths"])
     last_error: Optional[Exception] = None
     saw_404_on_modern = False
 
@@ -74,15 +89,17 @@ def fetch_card(base_url: str, timeout: float = 10.0) -> tuple[dict, FetchInfo]:
         started = time.monotonic()
         req = urllib.request.Request(
             url,
-            headers={"Accept": "application/json", "User-Agent": "a2aops/1.0"},
+            headers={"Accept": "application/json", "User-Agent": USER_AGENT},
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 status = resp.status
                 content_type = resp.headers.get("Content-Type", "")
-                body = resp.read()
+                body = read_capped(resp)
+        except ResponseTooLarge as e:
+            raise CardFetchError(f"GET {url}: {e}") from e
         except urllib.error.HTTPError as e:
-            if e.code == 404 and i == 0:
+            if e.code == 404 and i == 0 and len(candidates) > 1:
                 saw_404_on_modern = True
                 continue  # try the legacy path before giving up
             raise CardFetchError(f"GET {url} -> HTTP {e.code}") from e
@@ -111,6 +128,8 @@ def fetch_card(base_url: str, timeout: float = 10.0) -> tuple[dict, FetchInfo]:
         )
         return card, info
 
+    if card_path is not None:
+        raise CardFetchError(f"No AgentCard found at {base}{card_path}")
     raise CardFetchError(
         f"No AgentCard found at {base}{spec['card_path']} "
         f"or legacy {base}{spec['legacy_card_paths'][0]}"
@@ -300,3 +319,43 @@ def format_diagnostics(diags: list[Diagnostic]) -> str:
     if not diags:
         return "OK: no issues found."
     return "\n".join(str(d) for d in diags)
+
+
+def load_card_source(source: str, timeout: float = 10.0, card_path: Optional[str] = None,
+                     stdin=None) -> tuple[Any, Optional[FetchInfo]]:
+    """Load a card from ``-`` (stdin), an existing file path, or a base URL.
+
+    Resolution order is explicit: ``-`` -> stdin; a path that exists on disk ->
+    that file (a malformed file is an error, never silently retried as a URL);
+    anything else -> :func:`fetch_card`. Raises CardFetchError on failure.
+    """
+    import os
+    import sys
+
+    if source == "-":
+        stream = stdin if stdin is not None else sys.stdin
+        data = stream.read(MAX_LOCAL_BYTES + 1)
+        if len(data) > MAX_LOCAL_BYTES:
+            raise CardFetchError(f"stdin exceeds the {MAX_LOCAL_BYTES}-character cap")
+        try:
+            return json.loads(data), None
+        except ValueError as e:
+            raise CardFetchError(f"stdin is not valid JSON: {e}") from e
+    if os.path.isfile(source):
+        try:
+            size = os.path.getsize(source)
+            if size > MAX_LOCAL_BYTES:
+                raise CardFetchError(f"{source}: {size} bytes is over the {MAX_LOCAL_BYTES}-byte cap")
+            with open(source, encoding="utf-8-sig") as f:
+                return json.load(f), None
+        except (OSError, UnicodeDecodeError) as e:
+            raise CardFetchError(f"cannot read {source}: {e}") from e
+        except ValueError as e:
+            raise CardFetchError(f"{source} is not valid JSON: {e}") from e
+    if os.path.isdir(source):
+        raise CardFetchError(f"{source} is a directory, not a card file")
+    return fetch_card(source, timeout=timeout, card_path=card_path)
+
+
+#: Local files and stdin get a larger cap than network bodies (you chose them).
+MAX_LOCAL_BYTES = 16 * 1024 * 1024
