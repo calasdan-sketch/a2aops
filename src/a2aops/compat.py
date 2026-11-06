@@ -10,7 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from . import secreq
 from .card import FetchInfo
+from .net import clean
 from .spec import load_spec
 
 OK = "ok"
@@ -26,7 +28,10 @@ class MigrationItem:
 
     def __str__(self) -> str:
         mark = {"ok": "✓", "action": "✗", "info": "•"}[self.status]
-        return f"[{mark}] {self.check}: {self.detail}"
+        return f"[{mark}] {self.check}: {clean(self.detail)}"
+
+    def to_dict(self) -> dict:
+        return {"status": self.status, "check": self.check, "detail": self.detail}
 
 
 def detect_card_version(card: Any) -> str:
@@ -114,7 +119,17 @@ def compat_report(card: Any, fetch_info: Optional[FetchInfo] = None) -> list[Mig
     # --- security model ----------------------------------------------------
     if isinstance(card, dict):
         schemes = card.get("securitySchemes")
-        reqs = card.get("securityRequirements")
+        reqs = secreq.referenced_schemes(card) or card.get("securityRequirements") or card.get("security")
+        if card.get("securityRequirements") is None and "security" in card:
+            items.append(MigrationItem(
+                ACTION, "security-field",
+                "v0.3 'security' field must be renamed to 'securityRequirements' in v1.0"))
+        if any(a.shape == secreq.LEGACY for _, o in secreq.owners(card)
+               for a in secreq.alternatives(o)):
+            items.append(MigrationItem(
+                ACTION, "security-requirement-shape",
+                'requirements use the OpenAPI shape [{"<scheme>": [scopes]}]; v1.0 is '
+                '[{"schemes": {"<scheme>": {"list": [scopes]}}}]'))
         if schemes and not reqs:
             items.append(MigrationItem(
                 ACTION, "security-model",

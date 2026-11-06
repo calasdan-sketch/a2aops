@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import json
 import urllib.parse
-import urllib.request
 from typing import Optional
 
+from . import secreq
 from .card import ERROR, INFO, WARNING, Diagnostic
+from .net import UnsafeURL, open_untrusted, read_capped
 
 # Discriminated-union keys used by A2A v1.0 security scheme objects.
 SCHEME_KINDS = {
@@ -29,20 +30,31 @@ SCHEME_KINDS = {
 }
 
 
-def _fetch_json(url: str, timeout: float) -> tuple[Optional[dict], Optional[str]]:
-    """GET a JSON metadata document. Returns (doc, error)."""
-    req = urllib.request.Request(url, headers={"Accept": "application/json",
-                                               "User-Agent": "a2aops/1.0"})
+class _Blocked(str):
+    """Marker error string: the SSRF guard refused the fetch."""
+
+
+def _fetch_json(url: str, timeout: float,
+                allow_private: bool = False) -> tuple[Optional[dict], Optional[str]]:
+    """GET a card-supplied JSON metadata document. Returns (doc, error).
+
+    The URL comes from the card, so it is untrusted: it goes through the SSRF
+    guard (HTTPS only, public addresses only, every redirect re-checked) and a
+    2 MiB body cap.
+    """
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with open_untrusted(url, timeout, allow_private=allow_private) as resp:
             if resp.status != 200:
                 return None, f"HTTP {resp.status}"
-            return json.loads(resp.read().decode("utf-8-sig")), None
+            return json.loads(read_capped(resp).decode("utf-8-sig")), None
+    except UnsafeURL as e:
+        return None, _Blocked(str(e))
     except Exception as e:  # metadata fetch must never crash a check run
         return None, str(e)
 
 
-def _check_oidc(name: str, cfg: dict, timeout: float) -> list[Diagnostic]:
+def _check_oidc(name: str, cfg: dict, timeout: float,
+                allow_private: bool = False) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
     url = cfg.get("openIdConnectUrl")
     path = f"securitySchemes.{name}"
@@ -51,8 +63,16 @@ def _check_oidc(name: str, cfg: dict, timeout: float) -> list[Diagnostic]:
         return diags
     if not url.startswith("https://"):
         diags.append(Diagnostic(ERROR, "E302", "openIdConnectUrl must be an absolute HTTPS URL", path))
+        if not allow_private:
+            return diags  # never fetch plaintext card-supplied URLs
 
-    doc, err = _fetch_json(url, timeout)
+    doc, err = _fetch_json(url, timeout, allow_private)
+    if isinstance(err, _Blocked):
+        diags.append(Diagnostic(
+            WARNING, "W307",
+            f"skipped fetching discovery document: {err}",
+            path))
+        return diags
     if err is not None:
         diags.append(Diagnostic(
             ERROR, "E303",
@@ -120,28 +140,34 @@ def _check_apikey(name: str, cfg: dict) -> list[Diagnostic]:
 
 
 def check_auth_surface(card: dict, timeout: float = 10.0,
-                       check_remote: bool = True) -> list[Diagnostic]:
+                       check_remote: bool = True,
+                       allow_private: bool = False) -> list[Diagnostic]:
     """Check the card's declared auth surface for drift and inconsistency.
 
     ``check_remote=False`` skips fetching OIDC discovery documents (offline mode).
+    ``allow_private=True`` lets card-supplied URLs reach loopback/private
+    addresses (for local development stacks); off by default (SSRF guard).
     """
     diags: list[Diagnostic] = []
     if not isinstance(card, dict):
         return [Diagnostic(ERROR, "E300", "card must be a JSON object", "")]
 
     schemes = card.get("securitySchemes") or {}
-    reqs = card.get("securityRequirements") or []
     if not isinstance(schemes, dict):
         return [Diagnostic(ERROR, "E300", "'securitySchemes' must be an object", "securitySchemes")]
 
-    # 1. every requirement must reference a declared scheme
-    if isinstance(reqs, list):
-        for n, entry in enumerate(reqs):
-            p = f"securityRequirements[{n}]"
-            if not isinstance(entry, dict):
+    # 1. every requirement (card level and skill level, v1.0 {"schemes": {...}}
+    #    shape or legacy OpenAPI shape) must reference a declared scheme
+    for prefix, owner in secreq.owners(card):
+        field = secreq.requirements_field(owner)
+        if field is None or not isinstance(owner.get(field), list):
+            continue
+        for alt in secreq.parse(owner[field]):
+            p = f"{prefix}{field}[{alt.index}]"
+            if alt.shape == secreq.INVALID:
                 diags.append(Diagnostic(ERROR, "E340", "requirement entry must be an object", p))
                 continue
-            for scheme_name in entry:
+            for scheme_name in alt.schemes:
                 if scheme_name not in schemes:
                     diags.append(Diagnostic(
                         ERROR, "E341",
@@ -172,7 +198,7 @@ def check_auth_surface(card: dict, timeout: float = 10.0,
             continue
         if SCHEME_KINDS[kind] == "oidc":
             if check_remote:
-                diags.extend(_check_oidc(name, cfg, timeout))
+                diags.extend(_check_oidc(name, cfg, timeout, allow_private))
             elif not cfg.get("openIdConnectUrl"):
                 diags.append(Diagnostic(ERROR, "E301", "OIDC scheme lacks 'openIdConnectUrl'", path))
         elif SCHEME_KINDS[kind] == "oauth2":

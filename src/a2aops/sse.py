@@ -19,6 +19,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Optional
 
+from .net import USER_AGENT
 from .states import is_terminal, normalize_state
 
 
@@ -135,7 +136,7 @@ def open_sse(url: str, headers: Optional[dict] = None,
     req = urllib.request.Request(url, data=data, headers={
         "Accept": "text/event-stream",
         "Cache-Control": "no-cache",
-        "User-Agent": "a2aops/1.0",
+        "User-Agent": USER_AGENT,
         **(headers or {}),
     })
     return urllib.request.urlopen(req, timeout=timeout)

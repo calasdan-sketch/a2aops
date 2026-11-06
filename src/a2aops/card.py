@@ -11,7 +11,9 @@ errors (panel decision D2).
 
 from __future__ import annotations
 
+import http.client
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -19,6 +21,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from . import secreq
+from .net import USER_AGENT, ResponseTooLarge, clean, read_capped
 from .spec import load_spec
 
 ERROR = "error"
@@ -34,8 +38,13 @@ class Diagnostic:
     path: str = ""  # dotted path into the card, e.g. "skills[2].tags"
 
     def __str__(self) -> str:
-        loc = f" [{self.path}]" if self.path else ""
-        return f"{self.severity.upper()} {self.code}{loc}: {self.message}"
+        # message/path can echo attacker-controlled card text: escape controls
+        loc = f" [{clean(self.path)}]" if self.path else ""
+        return f"{self.severity.upper()} {self.code}{loc}: {clean(self.message)}"
+
+    def to_dict(self) -> dict:
+        return {"severity": self.severity, "code": self.code,
+                "message": self.message, "path": self.path}
 
 
 @dataclass
@@ -53,36 +62,47 @@ class CardFetchError(RuntimeError):
     """Raised when the AgentCard cannot be fetched or parsed."""
 
 
-def fetch_card(base_url: str, timeout: float = 10.0) -> tuple[dict, FetchInfo]:
+def fetch_card(base_url: str, timeout: float = 10.0,
+               card_path: Optional[str] = None) -> tuple[dict, FetchInfo]:
     """Fetch an AgentCard from a base URL.
 
     ``base_url`` may be an origin (``https://agent.example.com``) or include a
     path prefix (``https://example.com/agents/weather``). Returns the parsed
     card and fetch metadata. Raises CardFetchError on any failure.
+
+    ``card_path`` overrides discovery (e.g. ``/cards/weather.json``) for agents
+    that serve their card somewhere non-standard; no legacy fallback is tried.
+    Bodies over 2 MiB are refused.
     """
     spec = load_spec()
     base = base_url.rstrip("/")
     if "://" not in base:
         base = "https://" + base
-
-    candidates = [spec["card_path"]] + list(spec["legacy_card_paths"])
+    if card_path is not None:
+        if not card_path.startswith("/") or "://" in card_path:
+            raise CardFetchError(f"--card-path must be an absolute path like /x/card.json, got {card_path!r}")
+        candidates = [card_path]
+    else:
+        candidates = [spec["card_path"]] + list(spec["legacy_card_paths"])
     last_error: Optional[Exception] = None
     saw_404_on_modern = False
 
     for i, path in enumerate(candidates):
         url = base + path
         started = time.monotonic()
-        req = urllib.request.Request(
-            url,
-            headers={"Accept": "application/json", "User-Agent": "a2aops/1.0"},
-        )
         try:
+            req = urllib.request.Request(
+                url,
+                headers={"Accept": "application/json", "User-Agent": USER_AGENT},
+            )
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 status = resp.status
                 content_type = resp.headers.get("Content-Type", "")
-                body = resp.read()
+                body = read_capped(resp)
+        except ResponseTooLarge as e:
+            raise CardFetchError(f"GET {url}: {e}") from e
         except urllib.error.HTTPError as e:
-            if e.code == 404 and i == 0:
+            if e.code == 404 and i == 0 and len(candidates) > 1:
                 saw_404_on_modern = True
                 continue  # try the legacy path before giving up
             raise CardFetchError(f"GET {url} -> HTTP {e.code}") from e
@@ -90,6 +110,11 @@ def fetch_card(base_url: str, timeout: float = 10.0) -> tuple[dict, FetchInfo]:
             raise CardFetchError(f"GET {url} failed: {e.reason}") from e
         except (TimeoutError, OSError) as e:
             raise CardFetchError(f"GET {url} failed: {e}") from e
+        except (ValueError, http.client.HTTPException) as e:
+            # http.client.InvalidURL (an HTTPException, not a ValueError), bad
+            # IDNA labels (UnicodeError), bad IPv6 literals, unknown URL types,
+            # and protocol-level garbage (BadStatusLine, IncompleteRead)
+            raise CardFetchError(f"GET {url!r} failed: {e}") from e
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
         try:
@@ -111,6 +136,8 @@ def fetch_card(base_url: str, timeout: float = 10.0) -> tuple[dict, FetchInfo]:
         )
         return card, info
 
+    if card_path is not None:
+        raise CardFetchError(f"No AgentCard found at {base}{card_path}")
     raise CardFetchError(
         f"No AgentCard found at {base}{spec['card_path']} "
         f"or legacy {base}{spec['legacy_card_paths'][0]}"
@@ -212,10 +239,21 @@ def validate_card(card: Any) -> list[Diagnostic]:
                         diags.append(Diagnostic(ERROR, "E113", f"duplicate skill id '{sid}'", f"{p}.id"))
                     seen_ids.add(sid)
 
-    # --- securityRequirements shape ----------------------------------------
-    reqs = card.get("securityRequirements")
-    if reqs is not None and not isinstance(reqs, list):
-        diags.append(Diagnostic(ERROR, "E114", "'securityRequirements' must be an array", "securityRequirements"))
+    # --- securityRequirements shape (card and skill level) -------------------
+    for prefix, owner in secreq.owners(card):
+        reqs = owner.get("securityRequirements")
+        if reqs is None:
+            continue
+        if not isinstance(reqs, list):
+            diags.append(Diagnostic(ERROR, "E114", "'securityRequirements' must be an array",
+                                    f"{prefix}securityRequirements"))
+            continue
+        for alt in secreq.parse(reqs):
+            if alt.shape == secreq.INVALID:
+                diags.append(Diagnostic(
+                    ERROR, "E115",
+                    'requirement entry must be {"schemes": {"<scheme>": {"list": [scopes]}}}',
+                    f"{prefix}securityRequirements[{alt.index}]"))
 
     return diags
 
@@ -239,15 +277,26 @@ def lint_card(card: dict) -> list[Diagnostic]:
                 "preferred interface uses plain HTTP; production cards should be HTTPS",
                 "supportedInterfaces[0].url"))
 
-    # W202: declared schemes that are never required
+    # I207: pre-1.0 OpenAPI-shaped requirements ({"oidc": [...]})
+    for prefix, owner in secreq.owners(card):
+        field = secreq.requirements_field(owner)
+        if field is None:
+            continue
+        if field == "security":
+            diags.append(Diagnostic(
+                INFO, "I208", "v0.3 'security' field; v1.0 calls it 'securityRequirements'",
+                f"{prefix}security"))
+        if any(a.shape == secreq.LEGACY for a in secreq.alternatives(owner)):
+            diags.append(Diagnostic(
+                INFO, "I207",
+                'requirements use the pre-1.0 OpenAPI shape {"<scheme>": [scopes]}; v1.0 '
+                'is {"schemes": {"<scheme>": {"list": [scopes]}}}',
+                f"{prefix}{field}"))
+
+    # W202: declared schemes that are never required (card or skill level)
     schemes = card.get("securitySchemes")
-    reqs = card.get("securityRequirements")
     if isinstance(schemes, dict) and schemes:
-        referenced: set[str] = set()
-        if isinstance(reqs, list):
-            for entry in reqs:
-                if isinstance(entry, dict):
-                    referenced.update(entry.keys())
+        referenced = secreq.referenced_schemes(card)
         for name in schemes:
             if name not in referenced:
                 diags.append(Diagnostic(
@@ -300,3 +349,96 @@ def format_diagnostics(diags: list[Diagnostic]) -> str:
     if not diags:
         return "OK: no issues found."
     return "\n".join(str(d) for d in diags)
+
+
+@dataclass
+class CardSource:
+    """A loaded card plus where it came from."""
+    card: Any
+    info: Optional[FetchInfo]   # set for URLs
+    kind: str                   # url | file | stdin
+    text: Optional[str] = None  # raw text for file/stdin (read once)
+
+
+_WIN_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def looks_like_path(source: str) -> bool:
+    """True for inputs that are clearly meant as local files, not URLs.
+
+    Used so a typo'd file name is reported as "file not found" instead of being
+    sent to DNS and the network as a host name.
+    """
+    if "://" in source:
+        return False
+    return (source.lower().endswith(".json")
+            or source.startswith((".", "/", "~", "\\"))
+            or "\\" in source
+            or bool(_WIN_DRIVE.match(source)))
+
+
+def _parse_local(data: bytes, label: str) -> tuple[Any, str]:
+    if len(data) > MAX_LOCAL_BYTES:
+        raise CardFetchError(f"{label} exceeds the {MAX_LOCAL_BYTES}-byte cap")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        raise CardFetchError(f"{label} is not UTF-8: {e}") from e
+    try:
+        return json.loads(text), text
+    except ValueError as e:
+        raise CardFetchError(f"{label} is not valid JSON: {e}") from e
+
+
+def read_card_source(source: str, timeout: float = 10.0, card_path: Optional[str] = None,
+                     stdin=None) -> CardSource:
+    """Load a card from ``-`` (stdin), a local file, or a base URL.
+
+    Resolution order is explicit:
+
+    1. ``-`` -> stdin;
+    2. an existing file -> that file, read exactly once with a size cap (a
+       malformed file is an error, never silently retried as a URL);
+    3. something that looks like a path (``*.json``, ``./x``, ``/x``, ``~/x``,
+       ``C:\\x``) but does not exist -> "file not found", no network access;
+    4. anything else -> :func:`fetch_card`.
+
+    Raises CardFetchError on failure.
+    """
+    import os
+    import sys
+
+    if source == "-":
+        stream = stdin if stdin is not None else sys.stdin
+        raw = getattr(stream, "buffer", None)
+        data = raw.read(MAX_LOCAL_BYTES + 1) if raw is not None else \
+            stream.read(MAX_LOCAL_BYTES + 1).encode("utf-8")
+        card, text = _parse_local(data, "stdin")
+        return CardSource(card, None, "stdin", text)
+    path = os.path.expanduser(source)
+    if os.path.isdir(path):
+        raise CardFetchError(f"{source} is a directory, not a card file")
+    if os.path.isfile(path):
+        try:
+            with open(path, "rb") as f:
+                data = f.read(MAX_LOCAL_BYTES + 1)
+        except OSError as e:
+            raise CardFetchError(f"cannot read {source}: {e}") from e
+        card, text = _parse_local(data, source)
+        return CardSource(card, None, "file", text)
+    if looks_like_path(source):
+        raise CardFetchError(
+            f"file not found: {source} (for a URL, include the scheme, e.g. https://{source.lstrip('./')})")
+    card, info = fetch_card(source, timeout=timeout, card_path=card_path)
+    return CardSource(card, info, "url")
+
+
+def load_card_source(source: str, timeout: float = 10.0, card_path: Optional[str] = None,
+                     stdin=None) -> tuple[Any, Optional[FetchInfo]]:
+    """Back-compatible wrapper around :func:`read_card_source`: (card, info)."""
+    src = read_card_source(source, timeout=timeout, card_path=card_path, stdin=stdin)
+    return src.card, src.info
+
+
+#: Local files and stdin get a larger cap than network bodies (you chose them).
+MAX_LOCAL_BYTES = 16 * 1024 * 1024

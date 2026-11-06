@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .card import ERROR, WARNING, Diagnostic
+from .net import USER_AGENT, clean, read_capped
 from .states import is_terminal, normalize_state, state_class
 
 
@@ -123,7 +124,7 @@ class TaskInspector:
     def format(self) -> str:
         lines = [f"tasks observed: {len(self._seen_tasks)}"]
         for t in self.transitions():
-            lines.append(f"  {t.task_id}: {t.from_state} -> {t.to_state} x{t.count}")
+            lines.append(clean(f"  {t.task_id}: {t.from_state} -> {t.to_state} x{t.count}"))
         diags = self.report()
         if diags:
             lines.append("findings:")
@@ -187,9 +188,9 @@ def rest_get_task(base_url: str, task_id: str, timeout: float = 10.0) -> dict:
     """REST poll: GET {base}/tasks/{task_id}."""
     url = f"{base_url.rstrip()}/tasks/{task_id}"
     req = urllib.request.Request(url, headers={"Accept": "application/json",
-                                               "User-Agent": "a2aops/1.0"})
+                                               "User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8-sig"))
+        return json.loads(read_capped(resp).decode("utf-8-sig"))
 
 
 def jsonrpc_get_task(base_url: str, task_id: str, timeout: float = 10.0) -> dict:
@@ -198,9 +199,9 @@ def jsonrpc_get_task(base_url: str, task_id: str, timeout: float = 10.0) -> dict
                "method": "tasks/get", "params": {"id": task_id}}
     req = urllib.request.Request(base_url, data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json",
-                                          "User-Agent": "a2aops/1.0"})
+                                          "User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode("utf-8-sig"))
+        body = json.loads(read_capped(resp).decode("utf-8-sig"))
     if isinstance(body, dict) and "result" in body:
         return body["result"]
     return body
