@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterator, Optional
 
 from . import wire
-from .net import USER_AGENT
+from .net import USER_AGENT, loads_strict
 from .states import is_terminal, normalize_state
 
 
@@ -117,12 +117,24 @@ def parse_sse_stream(lines: Iterator[str]) -> Iterator[SSEEvent]:
         yield ev
 
 
+#: Per-line and dedupe-memory caps: a hostile server must not be able to grow
+#: this process without bound (one 50 MB ``data:`` line, or endless unique ids).
+MAX_LINE_BYTES = 4 << 20
+MAX_TRACKED_IDS = 100_000
+
+
+class SSELineTooLong(ValueError):
+    pass
+
+
 def _line_iter(resp) -> Iterator[str]:
     first = True
     while True:
-        raw = resp.readline()
+        raw = resp.readline(MAX_LINE_BYTES + 1)
         if not raw:
             break
+        if len(raw) > MAX_LINE_BYTES:
+            raise SSELineTooLong(f"SSE line longer than {MAX_LINE_BYTES} bytes")
         text = raw.decode("utf-8", errors="replace")
         if first:
             # A BOM at the start of the stream would otherwise glue itself
@@ -189,7 +201,7 @@ def _handle_non_stream(resp, base_url: str, task_id: str, binding: str,
                        legacy: bool, stats: "StreamStats") -> None:
     try:
         with resp:
-            body = json.loads(resp.read(1 << 20).decode("utf-8-sig"))
+            body = loads_strict(resp.read(1 << 20).decode("utf-8-sig"))
     except Exception as e:  # noqa: BLE001
         stats.notes.append(f"server answered with a non-stream body that is not JSON ({e}); not retrying")
         return
@@ -226,6 +238,7 @@ class StreamStats:
     comments: int = 0
     closed_on_terminal: bool = False
     notes: list[str] = field(default_factory=list)
+    gave_up: bool = False       # retries exhausted before a terminal/interrupted state
 
 
 def stream_with_resubscribe(
@@ -261,8 +274,8 @@ def stream_with_resubscribe(
         if not ev.data:
             return None
         try:
-            payload = json.loads(ev.data)
-        except (json.JSONDecodeError, ValueError):
+            payload = loads_strict(ev.data)
+        except ValueError:
             return None
         if isinstance(payload, dict) and isinstance(payload.get("result"), dict):
             payload = payload["result"]      # JSON-RPC envelope
@@ -294,6 +307,7 @@ def stream_with_resubscribe(
             stats.reconnects = reconnects
             if reconnects > max_reconnects:
                 stats.notes.append(f"gave up after {max_reconnects} reconnect attempts: {e}")
+                stats.gave_up = True
                 return stats
             delay = min(backoff_max, backoff_base * (2 ** (reconnects - 1))) * (0.8 + 0.4 * random.random())
             stats.notes.append(f"connect failed ({e}); retry {reconnects} in {delay:.1f}s")
@@ -321,7 +335,8 @@ def stream_with_resubscribe(
                             stats.duplicates += 1
                             stats.notes.append(f"duplicate event id {ev.id} skipped (resubscribe overlap)")
                             continue
-                        seen_ids.add(ev.id)
+                        if len(seen_ids) < MAX_TRACKED_IDS:
+                            seen_ids.add(ev.id)
                     stats.events += 1
                     if on_event:
                         try:
@@ -358,6 +373,7 @@ def stream_with_resubscribe(
         stats.reconnects = reconnects
         if reconnects > max_reconnects:
             stats.notes.append(f"gave up after {max_reconnects} reconnects")
+            stats.gave_up = True
             return stats
         delay = min(backoff_max, backoff_base * (2 ** (reconnects - 1))) * (0.8 + 0.4 * random.random())
         stats.notes.append(f"reconnect {reconnects} in {delay:.1f}s")

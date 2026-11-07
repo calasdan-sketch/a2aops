@@ -61,6 +61,9 @@ def _snake_to_camel(k: str) -> str:
 
 
 def _kind(v: Any) -> str:
+    if isinstance(v, list):
+        inner = sorted({_kind(x) for x in v})
+        return "array containing " + "/".join(inner) if inner else "array"
     if v is None:
         return "null"
     if isinstance(v, bool):

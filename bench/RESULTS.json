@@ -39,7 +39,7 @@
       "false_alarms": [],
       "checks_run": 49,
       "skipped": 5,
-      "seconds": 0.4
+      "seconds": 1.6
     },
     "mutants": {
       "total": 32,
@@ -67,7 +67,7 @@
           "REST-23",
           "RPC-08"
         ],
-        "seconds": 0.4
+        "seconds": 1.2
       },
       {
         "mutant": "wrong-notfound-code",
@@ -82,7 +82,7 @@
           "RPC-08",
           "RPC-09"
         ],
-        "seconds": 0.4
+        "seconds": 1.3
       },
       {
         "mutant": "rest-notfound-200",
@@ -94,7 +94,7 @@
         "flagged": [
           "REST-04"
         ],
-        "seconds": 0.3
+        "seconds": 1.1
       },
       {
         "mutant": "rest-error-500",
@@ -108,7 +108,7 @@
           "REST-04",
           "REST-05"
         ],
-        "seconds": 0.4
+        "seconds": 0.8
       },
       {
         "mutant": "ignore-version",
@@ -136,7 +136,7 @@
           "SSE-01",
           "SSE-10"
         ],
-        "seconds": 0.4
+        "seconds": 0.8
       },
       {
         "mutant": "stream-json-not-sse",
@@ -150,7 +150,7 @@
           "SSE-01",
           "SSE-10"
         ],
-        "seconds": 0.4
+        "seconds": 1.4
       },
       {
         "mutant": "stream-never-closes",
@@ -164,7 +164,7 @@
           "SSE-03",
           "SSE-10"
         ],
-        "seconds": 6.4
+        "seconds": 6.5
       },
       {
         "mutant": "event-after-terminal",
@@ -177,7 +177,7 @@
           "SSE-03",
           "SSE-10"
         ],
-        "seconds": 0.4
+        "seconds": 1.1
       },
       {
         "mutant": "state-v03-vocabulary",
@@ -195,7 +195,7 @@
           "SSE-04",
           "SSE-10"
         ],
-        "seconds": 0.3
+        "seconds": 0.5
       },
       {
         "mutant": "state-unspecified",
@@ -213,7 +213,7 @@
           "SSE-04",
           "SSE-10"
         ],
-        "seconds": 0.3
+        "seconds": 0.4
       },
       {
         "mutant": "send-unwrapped",
@@ -227,7 +227,7 @@
           "REST-20",
           "RPC-20"
         ],
-        "seconds": 0.2
+        "seconds": 0.5
       },
       {
         "mutant": "send-both-oneof",
@@ -239,7 +239,7 @@
         "flagged": [
           "RPC-20"
         ],
-        "seconds": 0.3
+        "seconds": 0.6
       },
       {
         "mutant": "parts-0.3-shape",
@@ -254,7 +254,7 @@
           "REST-20",
           "RPC-20"
         ],
-        "seconds": 0.2
+        "seconds": 0.6
       },
       {
         "mutant": "cancel-terminal-accepted",
@@ -268,7 +268,7 @@
           "REST-22",
           "RPC-23"
         ],
-        "seconds": 0.3
+        "seconds": 0.5
       },
       {
         "mutant": "push-not-gated",
@@ -282,7 +282,7 @@
           "REST-06",
           "RPC-10"
         ],
-        "seconds": 0.3
+        "seconds": 0.4
       },
       {
         "mutant": "extcard-not-gated",
@@ -296,7 +296,7 @@
           "REST-07",
           "RPC-11"
         ],
-        "seconds": 0.3
+        "seconds": 0.5
       },
       {
         "mutant": "stack-trace-leak",
@@ -308,7 +308,7 @@
         "flagged": [
           "RPC-15"
         ],
-        "seconds": 0.4
+        "seconds": 0.5
       },
       {
         "mutant": "rpc-id-not-echoed",
@@ -320,7 +320,7 @@
         "flagged": [
           "RPC-03"
         ],
-        "seconds": 0.3
+        "seconds": 0.6
       },
       {
         "mutant": "timestamp-offset",
@@ -336,7 +336,7 @@
           "RPC-20",
           "SSE-04"
         ],
-        "seconds": 0.3
+        "seconds": 0.8
       },
       {
         "mutant": "subscribe-terminal-streams",
@@ -350,7 +350,7 @@
           "REST-23",
           "RPC-24"
         ],
-        "seconds": 0.4
+        "seconds": 1.1
       },
       {
         "mutant": "auth-declared-not-enforced",
@@ -364,7 +364,7 @@
           "REST-10",
           "RPC-13"
         ],
-        "seconds": 0.4
+        "seconds": 0.6
       },
       {
         "mutant": "card-no-cache-control",
@@ -376,7 +376,7 @@
         "flagged": [
           "CARD-04"
         ],
-        "seconds": 0.4
+        "seconds": 0.8
       },
       {
         "mutant": "card-no-etag",
@@ -388,7 +388,7 @@
         "flagged": [
           "CARD-05"
         ],
-        "seconds": 0.3
+        "seconds": 0.8
       },
       {
         "mutant": "card-missing-name",
@@ -400,7 +400,7 @@
         "flagged": [
           "CARD-02"
         ],
-        "seconds": 0.4
+        "seconds": 1.2
       },
       {
         "mutant": "card-prompt-injection",
@@ -412,7 +412,7 @@
         "flagged": [
           "CARD-09"
         ],
-        "seconds": 0.3
+        "seconds": 1.3
       },
       {
         "mutant": "card-http-500",
@@ -426,7 +426,7 @@
           "CARD-02",
           "CARD-07"
         ],
-        "seconds": 0.0
+        "seconds": 0.1
       },
       {
         "mutant": "parse-error-wrong-code",
@@ -438,7 +438,7 @@
         "flagged": [
           "RPC-01"
         ],
-        "seconds": 0.4
+        "seconds": 1.2
       },
       {
         "mutant": "unknown-method-null-result",
@@ -451,7 +451,7 @@
           "RPC-03",
           "RPC-04"
         ],
-        "seconds": 0.5
+        "seconds": 0.6
       },
       {
         "mutant": "list-bad-shape",
@@ -465,7 +465,7 @@
           "REST-08",
           "RPC-12"
         ],
-        "seconds": 0.4
+        "seconds": 0.6
       },
       {
         "mutant": "task-without-contextid",
@@ -477,7 +477,7 @@
         "flagged": [
           "RPC-22"
         ],
-        "seconds": 0.4
+        "seconds": 1.2
       },
       {
         "mutant": "legacy-names-accepted",
@@ -489,7 +489,7 @@
         "flagged": [
           "RPC-04"
         ],
-        "seconds": 0.4
+        "seconds": 1.2
       }
     ]
   },
@@ -502,6 +502,13 @@
     "a2aops_under_recommended": 0,
     "a2aops_over_recommended": 0,
     "wrong": []
+  },
+  "fuzz": {
+    "iterations": 6000,
+    "loaded": 3017,
+    "rejected_cleanly": 2983,
+    "crashes": [],
+    "seconds": 12.3
   },
   "measured_once": {
     "a2aops 1.2.0 (round 1, commit 53fe4c9) on the same cards": {

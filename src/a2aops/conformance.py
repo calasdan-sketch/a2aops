@@ -818,7 +818,7 @@ def load_card_into(ctx: Ctx) -> None:
 
 def run(base: str, *, active: bool = False, timeout: float = 10.0, headers: Optional[dict] = None,
         card_path: Optional[str] = None, bindings: Optional[set] = None,
-        only_ids: Optional[set] = None) -> tuple[Ctx, list[Result]]:
+        only_ids: Optional[set] = None, skip_ids: Optional[set] = None) -> tuple[Ctx, list[Result]]:
     ctx = Ctx(base, timeout=timeout, active=active, headers=headers, card_path=card_path, bindings=bindings)
     load_card_into(ctx)
     _select_interfaces(ctx)
@@ -826,6 +826,8 @@ def run(base: str, *, active: bool = False, timeout: float = 10.0, headers: Opti
     card_ok = isinstance(ctx.card, dict)
     for c in REGISTRY:
         if only_ids and c.id not in only_ids:
+            continue
+        if skip_ids and c.id in skip_ids:
             continue
         t0 = time.monotonic()
         status, detail = PASS, ""

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.parse
 
@@ -27,10 +28,11 @@ from . import compat as compat_mod
 from . import sse as sse_mod
 from . import tasks as tasks_mod
 from . import report as report_mod
+from . import suppress
 from .card import (CardFetchError, check_card, fetch_card, format_diagnostics,
                    read_card_source)
 from .diff import diff_cards
-from .net import clean
+from .net import clean, loads_strict
 from .playground import demo_scenario, run_scenario, Scenario
 from .spec import spec_version
 
@@ -54,8 +56,24 @@ def _emit(args, diags, *, command: str, label: str, text=None,
           banner=(), ok_text="OK: no issues found.") -> int:
     fmt = getattr(args, "format", "text")
     strict = getattr(args, "strict", False)
+    try:
+        ignore = suppress.parse_ignore(getattr(args, "ignore", None))
+        wb = getattr(args, "write_baseline", None)
+        base_path = getattr(args, "baseline", None)
+        if wb and base_path:
+            raise suppress.SuppressError("use either --baseline or --write-baseline, not both")
+        baseline = suppress.load_baseline(base_path) if base_path else None
+        if wb:
+            total = suppress.write_baseline(wb, suppress.apply(diags, ignore, None)[0])
+            print(f"wrote {total} finding(s) to {wb}; future runs with --baseline {wb} fail only on new ones",
+                  file=sys.stderr)
+            return 0
+        diags, hidden = suppress.apply(diags, ignore, baseline)
+    except suppress.SuppressError as e:
+        return _err(e)
     if fmt == "json":
-        print(report_mod.to_json(diags, command=command, source=label, strict=strict))
+        print(report_mod.to_json(diags, command=command, source=label, strict=strict,
+                                 extra={"suppressed": hidden}))
     elif fmt == "sarif":
         print(report_mod.to_sarif(diags, command=command, artifact_uri=label, source_text=text))
     elif fmt == "junit":
@@ -64,6 +82,8 @@ def _emit(args, diags, *, command: str, label: str, text=None,
         for line in banner:
             print(clean(line))
         print(format_diagnostics(diags) if diags else ok_text)
+        if hidden:
+            print(f"({hidden} finding(s) hidden by --ignore/--baseline)")
     return 1 if report_mod.failed(diags, strict) else 0
 
 
@@ -142,7 +162,7 @@ def cmd_card_verify(args) -> int:
                 doc = cardsig._fetch_jwks(src, args.timeout)
             else:
                 with open(src, "rb") as f:
-                    doc = json.loads(f.read(1 << 20).decode("utf-8-sig"))
+                    doc = loads_strict(f.read(1 << 20).decode("utf-8-sig"))
             keys += jws.load_jwks(doc)
         except (OSError, ValueError, jws.JwsError) as e:
             return _err(f"cannot load keys from {src}: {e}")
@@ -179,11 +199,27 @@ def cmd_conformance(args) -> int:
     except ValueError as e:
         return _err(e)
     bindings = set(args.binding) if args.binding else None
+    known = {c.id for c in conf.REGISTRY}
+    chosen: dict[str, set] = {}
+    for flag in ("only", "skip"):
+        ids = {i.strip().upper() for v in (getattr(args, flag) or []) for i in v.split(",") if i.strip()}
+        unknown = sorted(ids - known)
+        if unknown:   # a typo must not turn into a green run that checked nothing
+            return _err(f"--{flag}: unknown check id(s) {', '.join(unknown)}; "
+                        f"known ids look like {sorted(known)[0]} ... {sorted(known)[-1]}")
+        chosen[flag] = ids
+    if chosen["only"] and chosen["only"] <= chosen["skip"]:
+        return _err("--only and --skip together leave no checks to run")
     ctx, results = conf.run(args.url, active=args.active, timeout=args.timeout, headers=headers,
                             card_path=args.card_path, bindings=bindings,
-                            only_ids=set(args.only) if args.only else None)
+                            only_ids=chosen["only"] or None, skip_ids=chosen["skip"] or None)
     if ctx.card_http is not None and ctx.card_http.error:
         return _err(f"cannot reach {ctx.card_url}: {ctx.card_http.error}")
+    for b in sorted(bindings or ()):
+        if isinstance(ctx.card, dict) and getattr(ctx, "jsonrpc" if b == "jsonrpc" else "rest", None) is None:
+            return _err(f"--binding {b}: the card offers no usable {b} v1.x interface, so nothing would be tested")
+    if results and all(r.status == conf.SKIP for r in results):
+        return _err("every check was skipped, so nothing was verified (use --active, or check --binding/--only)")
     fmt = args.format
     if fmt == "json":
         print(conf.to_json(results, args.url, args.active))
@@ -195,6 +231,18 @@ def cmd_conformance(args) -> int:
     else:
         print(conf.to_text(results, args.url, args.active))
     return 1 if conf.failed(results, args.strict) else 0
+
+
+def cmd_explain(args) -> int:
+    from . import explain as explain_mod
+    if not args.code:
+        for code in sorted(explain_mod.CODES):
+            print(f"{code}  {explain_mod.CODES[code][0]}")
+        return 0
+    text = explain_mod.explain(args.code)
+    for line in text.splitlines():
+        print(clean(line))
+    return 0 if args.code.strip().upper() in explain_mod.CODES else 2
 
 
 def cmd_card_fetch(args) -> int:
@@ -271,12 +319,8 @@ def cmd_task_inspect(args) -> int:
 
 
 def cmd_stream(args) -> int:
-    received: list[str] = []
-
     def on_event(ev):
-        line = clean(f"[{ev.id or '-'}] {ev.event or 'message'}: {ev.data[:200]}")
-        print(line)
-        received.append(line)
+        print(clean(f"[{ev.id or '-'}] {ev.event or 'message'}: {ev.data[:200]}"))
 
     stats = sse_mod.stream_with_resubscribe(
         args.base, args.task_id, binding=args.binding,
@@ -287,7 +331,7 @@ def cmd_stream(args) -> int:
           f"reconnects={stats.reconnects} closed_on_terminal={stats.closed_on_terminal}")
     for note in stats.notes:
         print(clean(f"note: {note}"))
-    return 0
+    return 1 if stats.gave_up else 0   # a stream that never reached a verdict must not look green
 
 
 def cmd_play_demo(args) -> int:
@@ -328,6 +372,13 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--card-path", default=None, metavar="PATH",
                         help="fetch the card from this path instead of /.well-known discovery")
 
+    def filter_opts(sp):
+        sp.add_argument("--ignore", action="append", metavar="CODE",
+                        help="hide a code or prefix, e.g. W203 or S8 (repeatable, comma-separated); hidden count is reported")
+        sp.add_argument("--baseline", metavar="FILE", help="hide findings recorded in FILE; fail only on new ones")
+        sp.add_argument("--write-baseline", metavar="FILE",
+                        help="record the current findings in FILE and exit 0")
+
     def out_opts(sp, sarif=True):
         sp.add_argument("--format", choices=["text", "json", "sarif", "junit"] if sarif else ["text", "json"],
                         default="text", help="output format (sarif = GitHub code scanning, junit = CI test report)")
@@ -338,6 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("base", metavar="source", help=src_help)
     fetch_opts(cc)
     out_opts(cc)
+    filter_opts(cc)
     cc.set_defaults(func=cmd_card_check)
     cf = csub.add_parser("fetch", help="print the raw AgentCard JSON")
     cf.add_argument("base")
@@ -351,17 +403,23 @@ def build_parser() -> argparse.ArgumentParser:
                     help="also fetch the signature's jku, only if it is on the card's own host (SSRF-guarded)")
     fetch_opts(cv)
     out_opts(cv)
+    filter_opts(cv)
     cv.set_defaults(func=cmd_card_verify)
     cd = csub.add_parser("diff", help="report breaking changes between two cards")
     cd.add_argument("old", help="the card clients use today (" + src_help + ")")
     cd.add_argument("new", help="the proposed card")
     fetch_opts(cd)
     out_opts(cd)
+    filter_opts(cd)
     cd.add_argument("--semver", action="store_true",
                     help="print the version bump these changes deserve (major/minor/patch/none)")
     cd.add_argument("--enforce-semver", action="store_true",
                     help="fail (D610) when the new card's version moved less than the recommended bump")
     cd.set_defaults(func=cmd_card_diff)
+
+    ex = sub.add_parser("explain", help="what a diagnostic code means and how to fix it")
+    ex.add_argument("code", nargs="?", help="e.g. E341 (omit to list every code)")
+    ex.set_defaults(func=cmd_explain)
 
     cp = sub.add_parser("compat", help="v0.x -> v1.0 migration report")
     cp.add_argument("source", help=src_help)
@@ -373,6 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
     au.add_argument("base", metavar="source", help=src_help)
     fetch_opts(au)
     out_opts(au)
+    filter_opts(au)
     au.add_argument("--offline", action="store_true",
                     help="skip fetching remote OIDC discovery documents")
     au.add_argument("--allow-private", action="store_true",
@@ -420,7 +479,8 @@ def build_parser() -> argparse.ArgumentParser:
                      help="extra request header, e.g. Authorization (sent only to the card's own host; never printed)")
     cf2.add_argument("--binding", action="append", choices=["jsonrpc", "rest"],
                      help="test only this binding (repeatable; default: all offered)")
-    cf2.add_argument("--only", action="append", metavar="ID", help="run only this check id (repeatable)")
+    cf2.add_argument("--only", action="append", metavar="ID", help="run only this check id (repeatable; unknown ids are an error)")
+    cf2.add_argument("--skip", action="append", metavar="ID", help="do not run this check id (repeatable; unknown ids are an error)")
     cf2.add_argument("--timeout", type=float, default=10.0)
     cf2.add_argument("--card-path", default=None, metavar="PATH")
     cf2.set_defaults(func=cmd_conformance)
@@ -439,12 +499,26 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    # Findings echo card text. A console or pipe that cannot encode a character
+    # (cp1252 on Windows, ASCII in a minimal container) must degrade to an
+    # escape, never to a traceback that hides the verdict.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError, OSError):
+            pass  # not a TextIOWrapper (tests, embedding): leave it alone
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         return args.func(args)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
+        return 2
+    except BrokenPipeError:
+        try:
+            sys.stdout = open(os.devnull, "w")   # silence the interpreter's flush-at-exit error
+        except OSError:
+            pass
         return 2
 
 

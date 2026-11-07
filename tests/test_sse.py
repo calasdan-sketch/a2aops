@@ -59,7 +59,7 @@ class FakeResp:
         self._exc = exc or ConnectionError("boom")
         self._n = 0
 
-    def readline(self):
+    def readline(self, size=-1):
         if self._fail_after is not None and self._n >= self._fail_after:
             raise self._exc
         if self._n >= len(self._chunks):
@@ -193,7 +193,7 @@ class TestParseEdgeCases(unittest.TestCase):
             def __init__(self, chunks):
                 self._chunks = list(chunks)
 
-            def readline(self):
+            def readline(self, size=-1):
                 return self._chunks.pop(0) if self._chunks else b""
 
         events = list(

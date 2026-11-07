@@ -21,6 +21,8 @@ from typing import Iterable, Optional
 
 from . import __version__
 from .card import ERROR, INFO, WARNING, Diagnostic
+from .locate import LineIndex
+from .suppress import fingerprint
 
 _SARIF_LEVEL = {ERROR: "error", WARNING: "warning", INFO: "note"}
 _SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
@@ -81,9 +83,13 @@ def _last_key(path: str) -> Optional[str]:
     return m[-1] if m else None
 
 
-def _line_for(path: str, text: Optional[str]) -> int:
+def _line_for(path: str, text: Optional[str], index=None) -> int:
     if not text or not path:
         return 1
+    if index is not None:
+        found = index.line(path)
+        if found:
+            return found
     key = _last_key(path)
     if not key:
         return 1
@@ -93,10 +99,21 @@ def _line_for(path: str, text: Optional[str]) -> int:
     return text.count("\n", 0, idx) + 1 if idx >= 0 else 1
 
 
+def _unique_fp(d: Diagnostic, seen: dict) -> str:
+    """Fingerprint, disambiguated when one run has several findings with the same code and path
+    (code scanning treats equal fingerprints as the same alert)."""
+    fp = fingerprint(d)
+    n = seen.get(fp, 0)
+    seen[fp] = n + 1
+    return fp if n == 0 else f"{fp}:{n}"
+
+
 def to_sarif(diags: list[Diagnostic], *, command: str, artifact_uri: str,
              source_text: Optional[str] = None) -> str:
     rules: dict[str, dict] = {}
     results = []
+    index = LineIndex(source_text) if source_text else None
+    seen_fp: dict[str, int] = {}
     for d in diags:
         rules.setdefault(d.code, {
             "id": d.code,
@@ -108,7 +125,7 @@ def to_sarif(diags: list[Diagnostic], *, command: str, artifact_uri: str,
         loc = {
             "physicalLocation": {
                 "artifactLocation": {"uri": artifact_uri},
-                "region": {"startLine": _line_for(d.path, source_text)},
+                "region": {"startLine": _line_for(d.path, source_text, index)},
             },
         }
         if d.path:
@@ -118,6 +135,8 @@ def to_sarif(diags: list[Diagnostic], *, command: str, artifact_uri: str,
             "level": _SARIF_LEVEL.get(d.severity, "note"),
             "message": {"text": d.message},
             "locations": [loc],
+            # lets code scanning keep an alert open as the line moves
+            "partialFingerprints": {"a2aopsFinding/v1": _unique_fp(d, seen_fp)},
         })
     doc = {
         "$schema": _SCHEMA,

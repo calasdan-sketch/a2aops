@@ -39,6 +39,8 @@ import re
 from decimal import Decimal
 from typing import Any
 
+from .net import loads_strict
+
 MAX_DEPTH = 128
 
 
@@ -420,7 +422,7 @@ def verify_signature(card: dict, sig: dict, keys: list[dict], *, profiles=PROFIL
     """
     try:
         prot_b64, sig_b64 = sig["protected"], sig["signature"]
-        header = json.loads(b64u_decode(prot_b64))
+        header = loads_strict(b64u_decode(prot_b64))
         signature = b64u_decode(sig_b64)
     except (KeyError, TypeError, ValueError, JwsError):
         return Outcome.MALFORMED, "protected/signature are not base64url JSON"

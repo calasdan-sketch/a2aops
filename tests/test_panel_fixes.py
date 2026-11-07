@@ -332,8 +332,12 @@ class TestContentLengthPrecheck(unittest.TestCase):
     def test_malformed_header_falls_back_to_counted_read(self):
         class R:
             headers = {"Content-Length": "lots"}
+            sent = False
 
             def read(self, n=-1):
+                if R.sent:
+                    return b""
+                R.sent = True
                 return b"x" * min(n, 5)
 
         self.assertEqual(net.read_capped(R(), limit=10), b"xxxxx")

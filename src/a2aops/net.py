@@ -23,8 +23,10 @@ that race. Use ``--offline`` when auditing cards you do not trust at all.
 from __future__ import annotations
 
 import ipaddress
+import json
 import re
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -47,8 +49,19 @@ class UnsafeURL(ValueError):
     """Raised when a card-supplied URL fails the SSRF guard."""
 
 
-def read_capped(resp, limit: int = MAX_DOC_BYTES) -> bytes:
-    """Read at most ``limit`` bytes from ``resp``; raise if there is more."""
+#: Wall-clock ceiling for reading one capped body. ``--timeout`` is a per-socket
+#: read timeout, so a server that drips one byte every few seconds would
+#: otherwise hold a CI job for hours ("slowloris" in reverse).
+MAX_READ_SECONDS = 30.0
+
+
+def read_capped(resp, limit: int = MAX_DOC_BYTES, max_seconds: Optional[float] = None) -> bytes:
+    """Read at most ``limit`` bytes from ``resp``; raise if there is more.
+
+    Also raises :class:`ResponseTooLarge` (naming the time, not the size) when
+    the whole read takes longer than ``max_seconds`` (default
+    :data:`MAX_READ_SECONDS`).
+    """
     headers = getattr(resp, "headers", None)
     declared_raw = headers.get("Content-Length") if headers else None
     declared: Optional[int] = None
@@ -59,10 +72,79 @@ def read_capped(resp, limit: int = MAX_DOC_BYTES) -> bytes:
             declared = None  # malformed header: rely on the counted read
     if declared is not None and declared > limit:
         raise ResponseTooLarge(f"response declares {declared} bytes, over the {limit}-byte cap")
-    body = resp.read(limit + 1)
-    if len(body) > limit:
+    budget = MAX_READ_SECONDS if max_seconds is None else max_seconds
+    deadline = time.monotonic() + budget
+    chunks: list[bytes] = []
+    total = 0
+    while total <= limit:
+        chunk = resp.read(min(65536, limit + 1 - total))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if time.monotonic() > deadline:
+            raise ResponseTooLarge(f"response was still arriving after {budget:g}s; giving up")
+    if total > limit:
         raise ResponseTooLarge(f"response exceeds the {limit}-byte cap")
-    return body
+    return b"".join(chunks)
+
+
+# ------------------------------------------------------------ strict JSON
+
+#: Deepest JSON nesting accepted. Real AgentCards nest about ten levels;
+#: ``extensions`` is free-form, so allow generous headroom but stop well before
+#: Python's recursion limit makes later walkers fall over.
+MAX_JSON_DEPTH = 100
+
+
+def _no_dups(pairs: list) -> dict:
+    out: dict = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError(
+                f"duplicate key {k!r} (RFC 8259: behaviour is undefined, and different "
+                "parsers keep different values)")
+        out[k] = v
+    return out
+
+
+def _no_const(name: str):
+    raise ValueError(f"{name} is not valid JSON")
+
+
+def _depth_exceeds(obj: object, limit: int) -> bool:
+    stack = [(obj, 1)]
+    while stack:
+        o, d = stack.pop()
+        if isinstance(o, dict):
+            kids = o.values()
+        elif isinstance(o, list):
+            kids = o
+        else:
+            continue
+        if d > limit:
+            return True
+        stack.extend((k, d + 1) for k in kids if isinstance(k, (dict, list)))
+    return False
+
+
+def loads_strict(text: str):
+    """``json.loads`` for untrusted documents. Fails closed with ``ValueError``.
+
+    Rejects what Python's parser silently accepts: ``NaN``/``Infinity``,
+    duplicate object keys (parsers disagree on which value wins, so a card can
+    show a reviewer one value and a client another), nesting deeper than
+    :data:`MAX_JSON_DEPTH`, and the RecursionError a 100,000-deep array would
+    otherwise turn into a traceback. Oversized integers already raise
+    ``ValueError`` in Python 3.11+.
+    """
+    try:
+        obj = json.loads(text, object_pairs_hook=_no_dups, parse_constant=_no_const)
+    except RecursionError:
+        raise ValueError(f"JSON nests deeper than {MAX_JSON_DEPTH} levels") from None
+    if _depth_exceeds(obj, MAX_JSON_DEPTH):
+        raise ValueError(f"JSON nests deeper than {MAX_JSON_DEPTH} levels")
+    return obj
 
 
 # ---------------------------------------------------------------- SSRF guard
@@ -180,7 +262,7 @@ def open_untrusted(url: str, timeout: float, *, allow_private: bool = False,
 # the source file itself contains no invisible characters.
 _UNSAFE = re.compile(
     "[\x00-\x08\x0b-\x1f\x7f-\x9f\u00ad\u061c\u180e\u200b-\u200f"
-    "\u2028-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb]")
+    "\u2028-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb\ud800-\udfff]")
 
 
 def clean(text: object) -> str:

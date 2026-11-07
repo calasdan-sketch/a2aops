@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import run_cards, run_diff, run_mutants
+from . import fuzz, run_cards, run_diff, run_mutants
 
 MEASURED_ONCE = {
     "a2aops 1.2.0 (round 1, commit 53fe4c9) on the same cards": {
@@ -18,7 +18,7 @@ MEASURED_ONCE = {
 def main() -> None:
     res = {"cards": run_cards.run("--no-competitors" not in sys.argv),
            "mutants": run_mutants.run() if hasattr(run_mutants, "run") else None,
-           "diff": run_diff.run(), "measured_once": MEASURED_ONCE}
+           "diff": run_diff.run(), "fuzz": fuzz.run(6000), "measured_once": MEASURED_ONCE}
     Path(__file__).with_name("RESULTS.json").write_text(json.dumps(res, indent=2) + "\n")
 
 

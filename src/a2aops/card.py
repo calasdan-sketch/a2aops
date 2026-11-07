@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from . import secreq
-from .net import USER_AGENT, ResponseTooLarge, clean, read_capped
+from .net import USER_AGENT, ResponseTooLarge, clean, loads_strict, read_capped
 from .spec import load_spec
 
 ERROR = "error"
@@ -123,8 +123,8 @@ def fetch_card(base_url: str, timeout: float = 10.0,
         elapsed_ms = int((time.monotonic() - started) * 1000)
         try:
             text = body.decode("utf-8-sig")  # tolerate a BOM
-            card = json.loads(text)
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            card = loads_strict(text)
+        except (UnicodeDecodeError, ValueError) as e:
             raise CardFetchError(f"GET {url} returned non-JSON body: {e}") from e
         if not isinstance(card, dict):
             raise CardFetchError(f"GET {url} returned a JSON {type(card).__name__}, not an object")
@@ -413,7 +413,7 @@ def _parse_local(data: bytes, label: str) -> tuple[Any, str]:
     except UnicodeDecodeError as e:
         raise CardFetchError(f"{label} is not UTF-8: {e}") from e
     try:
-        return json.loads(text), text
+        return loads_strict(text), text
     except ValueError as e:
         raise CardFetchError(f"{label} is not valid JSON: {e}") from e
 

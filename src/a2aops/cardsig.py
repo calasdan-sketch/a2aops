@@ -23,12 +23,12 @@ from typing import Any, Optional
 
 from . import jws
 from .card import ERROR, INFO, WARNING, Diagnostic
-from .net import UnsafeURL, clean, open_untrusted, read_capped
+from .net import UnsafeURL, clean, loads_strict, open_untrusted, read_capped
 
 
 def _fetch_jwks(url: str, timeout: float) -> Any:
     with open_untrusted(url, timeout) as resp:
-        return json.loads(read_capped(resp).decode("utf-8-sig"))
+        return loads_strict(read_capped(resp).decode("utf-8-sig"))
 
 
 def verify_card(card: Any, keys: list[dict], *, card_host: Optional[str] = None,
@@ -49,7 +49,7 @@ def verify_card(card: Any, keys: list[dict], *, card_host: Optional[str] = None,
             out.append(Diagnostic(ERROR, "G908", "signature entry is not an object", path))
             continue
         try:
-            hdr = json.loads(jws.b64u_decode(sg.get("protected", "")))
+            hdr = loads_strict(jws.b64u_decode(sg.get("protected", "")))
         except (ValueError, jws.JwsError, TypeError):
             hdr = {}
         use_keys = list(keys)

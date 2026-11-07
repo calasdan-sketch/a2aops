@@ -11,6 +11,18 @@ inputs:
     description: Treat warnings as failures.
     required: false
     default: "false"
+  ignore:
+    description: Comma-separated codes or prefixes to hide in the card check (for example "W203,S8").
+    required: false
+    default: ""
+  baseline:
+    description: Path to a baseline file written with --write-baseline; only new findings fail.
+    required: false
+    default: ""
+  old-card:
+    description: The card clients use today (URL or file). When set with card, runs a breaking-change diff and fails on it.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -22,15 +34,29 @@ runs:
         A2AOPS_CARD: ${{ inputs.card }}
         A2AOPS_URL: ${{ inputs.agent-url }}
         A2AOPS_STRICT: ${{ inputs.strict }}
+        A2AOPS_IGNORE: ${{ inputs.ignore }}
+        A2AOPS_BASELINE: ${{ inputs.baseline }}
+        A2AOPS_OLD_CARD: ${{ inputs.old-card }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         python -m pip install "$ACTION_PATH"
-        flags=""
-        [ "$A2AOPS_STRICT" = "true" ] && flags="--strict"
+        flags=()
+        [ "$A2AOPS_STRICT" = "true" ] && flags+=(--strict)
         if [ -z "$A2AOPS_CARD" ] && [ -z "$A2AOPS_URL" ]; then
           echo "set card and/or agent-url" >&2; exit 2
         fi
-        [ -n "$A2AOPS_CARD" ] && a2aops card check "$A2AOPS_CARD" $flags
-        [ -n "$A2AOPS_URL" ] && a2aops conformance "$A2AOPS_URL" $flags
-        exit 0
+        cardflags=(${flags[@]+"${flags[@]}"})
+        [ -n "$A2AOPS_IGNORE" ] && cardflags+=(--ignore "$A2AOPS_IGNORE")
+        [ -n "$A2AOPS_BASELINE" ] && cardflags+=(--baseline "$A2AOPS_BASELINE")
+        status=0
+        if [ -n "$A2AOPS_CARD" ]; then
+          a2aops card check "$A2AOPS_CARD" ${cardflags[@]+"${cardflags[@]}"} || status=$?
+        fi
+        if [ -n "$A2AOPS_CARD" ] && [ -n "$A2AOPS_OLD_CARD" ]; then
+          a2aops card diff "$A2AOPS_OLD_CARD" "$A2AOPS_CARD" || status=$?
+        fi
+        if [ -n "$A2AOPS_URL" ]; then
+          a2aops conformance "$A2AOPS_URL" ${flags[@]+"${flags[@]}"} || status=$?
+        fi
+        exit "$status"

@@ -341,7 +341,8 @@ class TestOutputFormats(unittest.TestCase):
                                   command="t", artifact_uri="c.json", source_text=text))
         lines = [r["locations"][0]["physicalLocation"]["region"]["startLine"]
                  for r in out["runs"][0]["results"]]
-        self.assertEqual(lines, [1, 3])
+        # a missing key points at the object that lacks it (skills[0], line 4)
+        self.assertEqual(lines, [4, 3])
 
     def test_compat_json(self):
         code, out, _ = run_cli("compat", str(FIX / "card_v03.json"), "--format", "json")

@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from . import wire
+from .net import USER_AGENT, loads_strict, read_capped
 from .spec import load_spec
 
 
@@ -209,7 +210,7 @@ class MockAgent:
                     self._rest_v1_post(path, raw)
                     return
                 try:
-                    req = json.loads((raw or b"{}").decode("utf-8"))
+                    req = loads_strict((raw or b"{}").decode("utf-8"))
                 except (ValueError, UnicodeDecodeError):
                     self._send(400, {"jsonrpc": "2.0", "id": None,
                                      "error": {"code": -32700, "message": "Parse error"}})
@@ -305,7 +306,7 @@ class MockAgent:
 
             def _rest_v1_post(self, path: str, raw: bytes):
                 try:
-                    body = json.loads((raw or b"{}").decode("utf-8"))
+                    body = loads_strict((raw or b"{}").decode("utf-8"))
                 except (ValueError, UnicodeDecodeError):
                     self._send(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT",
                                                "message": "invalid JSON"}}, "application/a2a+json")
@@ -705,12 +706,12 @@ class Scenario:
 def _rpc(url: str, method: str, params: dict, timeout: float = 15.0) -> dict:
     payload = {"jsonrpc": "2.0", "id": f"a2aops-{int(time.time() * 1000)}",
                "method": method, "params": params}
-    headers = {"Content-Type": "application/json", "User-Agent": "a2aops/1.0"}
+    headers = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
     if method in wire.V1_METHODS:           # v1.0 method names carry the version header
         headers["A2A-Version"] = wire.A2A_VERSION
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8-sig"))
+        return loads_strict(read_capped(resp).decode("utf-8-sig"))
 
 
 @dataclass

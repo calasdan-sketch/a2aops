@@ -2,6 +2,36 @@
 
 ## 1.3.0 — unreleased
 
+### Round 3 (hostile input, adoption, honesty of exit codes)
+
+Found by hand-testing as an attacker, a CI engineer, an auditor and a first-time
+user; each item has a regression test in `tests/test_round3.py`.
+
+**Fixed**
+- **Crash on deep JSON.** A card nested 100,000 levels deep (from a file or a hostile server) raised `RecursionError` with a traceback in `card check`, `compat`, `auth`, `card diff`, `task poll` and `conformance`. All untrusted JSON now goes through `net.loads_strict`: clean one-line error.
+- **Duplicate keys were silently accepted** (last one wins; other parsers keep the first). They are now rejected everywhere untrusted JSON is parsed, including JWS protected headers (`{"alg":"ES256","alg":"none"}`). `NaN`/`Infinity` are rejected too. Behaviour change: such a card is exit 2, not a finding.
+- **Crash on lone surrogates.** A card with `"\ud800"` in a skill id made `card diff` die with `UnicodeEncodeError` (text and JUnit). `clean()` escapes surrogates and the CLI switches stdout/stderr to backslash-escape fallback, which also fixes cp1252/ASCII consoles meeting characters such as the em dash.
+- **`--timeout` did not bound a slow server.** A body dripping bytes was read for as long as the server liked (30 s observed with `--timeout 3`). `read_capped` now stops after 30 s in total.
+- **`conformance --only TYPO` exited 0 having checked nothing.** Unknown `--only`/`--skip` ids, a `--binding` the card does not offer, and a run where every check was skipped are now exit 2.
+- **`stream` exited 0 after giving up.** It now exits 1. A single SSE line over 4 MiB ends the connection (it used to be read without limit) and the dedupe set is capped at 100,000 ids. The unused per-event list was removed.
+- SARIF annotations for `skills[2].tags` landed on the first skill's `tags`; paths (including `skills[id=x]`) are now resolved by a tokenizer, and a missing key points at the object that lacks it.
+- `inputModes: [3]` reported "array of strings, got array"; it now says "got array containing number".
+- A broken pipe (`a2aops ... | head`) no longer prints a traceback.
+
+**Added**
+- `--ignore CODE|PREFIX`, `--baseline FILE`, `--write-baseline FILE` for `card check`, `card diff`, `card verify`, `auth`. Hidden findings are counted, never silent; bad baselines fail closed.
+- `a2aops explain [CODE]` for all 109 diagnostic codes, with a test that fails if a check emits a code that has no entry (and the reverse).
+- `conformance --skip ID`.
+- SARIF `partialFingerprints` (stable per code+path, disambiguated for repeats).
+- `action.yml` inputs `ignore`, `baseline`, `old-card` (runs `card diff`); runs every step and reports the worst exit code; empty-array safe on bash 3.2.
+- `bench/fuzz.py`: seeded hostile-input fuzz (`python -m bench.fuzz`), recorded in `bench/RESULTS.json` (6000 inputs, 0 crashes).
+
+**Tests** 243 -> 284. Benchmark numbers unchanged (cards 1.00/1.00, 32/32 injected faults, 25/25 semver); the committed file additionally records the fuzz run.
+
+**Not done / unverified:** the composite action was run against a stub CLI, not on a GitHub runner; Python 3.10 was not available here (3.11-3.13 pass); no gRPC probes; JWS still ES*/RS* only; the official TCK mutation comparison is still missing.
+
+### Round 2
+
 Verified against A2A 1.0.0 (spec page) / proto 1.0.1, and against the official
 Python SDK 1.3.0 running as a real v1.0 server.
 

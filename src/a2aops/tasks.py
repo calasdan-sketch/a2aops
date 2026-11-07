@@ -30,7 +30,7 @@ from typing import Any, Callable, Optional
 
 from . import wire
 from .card import ERROR, WARNING, Diagnostic
-from .net import clean
+from .net import clean, loads_strict
 from .states import is_terminal, normalize_state, state_class
 
 
@@ -154,8 +154,8 @@ def observations_from_jsonl(path: str) -> list[Observation]:
             if not line:
                 continue
             try:
-                row = json.loads(line)
-            except json.JSONDecodeError as e:
+                row = loads_strict(line)
+            except ValueError as e:
                 raise ValueError(f"{path}:{n}: invalid JSON: {e}") from e
             obs_row = _observation_row(row, path, n)
             if obs_row is None:

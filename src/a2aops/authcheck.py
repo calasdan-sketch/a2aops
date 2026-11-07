@@ -18,7 +18,7 @@ from typing import Optional
 
 from . import secreq
 from .card import ERROR, INFO, WARNING, Diagnostic
-from .net import UnsafeURL, open_untrusted, read_capped
+from .net import UnsafeURL, loads_strict, open_untrusted, read_capped
 
 # Discriminated-union keys used by A2A v1.0 security scheme objects.
 SCHEME_KINDS = {
@@ -46,7 +46,7 @@ def _fetch_json(url: str, timeout: float,
         with open_untrusted(url, timeout, allow_private=allow_private) as resp:
             if resp.status != 200:
                 return None, f"HTTP {resp.status}"
-            return json.loads(read_capped(resp).decode("utf-8-sig")), None
+            return loads_strict(read_capped(resp).decode("utf-8-sig")), None
     except UnsafeURL as e:
         return None, _Blocked(str(e))
     except Exception as e:  # metadata fetch must never crash a check run

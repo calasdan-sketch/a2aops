@@ -34,7 +34,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Optional
 
-from .net import USER_AGENT, ResponseTooLarge, read_capped
+from .net import USER_AGENT, ResponseTooLarge, loads_strict, read_capped
 
 A2A_VERSION = "1.0"
 ERRORINFO_TYPE = "type.googleapis.com/google.rpc.ErrorInfo"
@@ -131,7 +131,7 @@ class Http:
 
     def json(self) -> Any:
         try:
-            return json.loads(self.body.decode("utf-8-sig"))
+            return loads_strict(self.body.decode("utf-8-sig"))
         except (ValueError, UnicodeDecodeError):
             return None
 
@@ -426,7 +426,7 @@ def sse_collect(method: str, url: str, body: Optional[bytes], headers: dict, *,
                     if data_lines:
                         cap.raw_events += 1
                         try:
-                            cap.events.append(json.loads("\n".join(data_lines)))
+                            cap.events.append(loads_strict("\n".join(data_lines)))
                         except ValueError:
                             cap.bad_json += 1
                         data_lines = []
@@ -440,7 +440,7 @@ def sse_collect(method: str, url: str, body: Optional[bytes], headers: dict, *,
         if data_lines:   # trailing event without blank line
             cap.raw_events += 1
             try:
-                cap.events.append(json.loads("\n".join(data_lines)))
+                cap.events.append(loads_strict("\n".join(data_lines)))
             except ValueError:
                 cap.bad_json += 1
     cap.elapsed_ms = int((time.monotonic() - started) * 1000)

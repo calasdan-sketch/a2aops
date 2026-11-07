@@ -38,6 +38,10 @@ a2aops conformance https://agent.example.com --active
 # 2c. Is the card signed by a key you trust?
 a2aops card verify https://agent.example.com --jwks trusted-keys.json
 
+# 2d. Adopting on a card that already has findings? Fail only on new ones.
+a2aops card check ./agent-card.json --write-baseline .a2aops-baseline.json
+a2aops card check ./agent-card.json --baseline .a2aops-baseline.json
+
 # 3. Still on the pre-1.0 shape? Get the migration checklist.
 a2aops compat https://agent.example.com
 
@@ -49,6 +53,9 @@ a2aops stream https://agent.example.com task-0001
 
 # 6. Spin up two local agents and watch them talk:
 a2aops play demo
+
+# 7. What does finding E341 mean, and how do I fix it?
+a2aops explain E341
 ```
 
 What `card diff` looks like (the fixture card with one interface removed,
@@ -82,12 +89,20 @@ jobs:
       - run: a2aops card check agent-card.json --format sarif > a2aops.sarif || true
       - uses: github/codeql-action/upload-sarif@v3
         with: { sarif_file: a2aops.sarif }
-      - run: a2aops card check agent-card.json --strict
+      - run: a2aops card check agent-card.json --strict --baseline .a2aops-baseline.json
       - run: a2aops card diff https://agent.example.com agent-card.json
 ```
 
+Or use the bundled composite action (`action.yml`; inputs `card`, `agent-url`,
+`strict`, `ignore`, `baseline`, `old-card`). The action's shell logic was run
+locally against a stub CLI; it has not been run on a GitHub runner.
+
 SARIF annotations point at the line of the offending key when the source is a
-local file (best-effort key lookup) and always carry the JSON path
+local file (a small tokenizer maps `skills[2].tags` or `skills[id=x].tags` to
+the right element; if a key is missing the annotation lands on the object that
+lacks it; files over 4 MiB fall back to line 1), carry a stable
+`partialFingerprints` value so code scanning keeps an alert open when lines
+move, and always carry the JSON path
 (`skills[0].tags`) as a logical location. File locations are written as
 percent-encoded URIs relative to the working directory (`cards/my%20card.json`),
 which is what GitHub needs to map them to repository files; files outside the
@@ -99,8 +114,9 @@ working directory become absolute `file://` URIs.
 |---|---|
 | `a2aops card check <src>` | `src` is a base URL, a JSON file, or `-`. For URLs: fetch `/.well-known/agent-card.json` (falls back to legacy `/.well-known/agent.json` and tells you). Validate against the A2A v1.0 schema and lint for robustness. Exit 1 on errors (`--strict`: on warnings too). |
 | `a2aops card diff <old> <new>` | Breaking-change report between two cards (each a URL, file, or one `-`). Errors = breaks existing clients (removed skill/interface/input mode — including a skill narrowing the modes it used to inherit — capability turned off, auth newly required or an auth alternative removed at card or skill level, an extension becoming required, an interface's `tenant` changing); warnings = risky (preferred interface reordered, tags dropped, version not bumped, breaking change without a major bump); infos = additive. |
+| `a2aops explain [CODE]` | What a diagnostic code means and how to fix it; without a code, lists them all. A test fails if the checks emit a code that has no entry. |
 | `a2aops card fetch <base>` | Print the raw card JSON. |
-| `a2aops conformance <url>` | Live A2A v1.0 protocol checks (49 checks, each with a MUST/SHOULD/MAY level and a spec section): card serving and caching, JSON-RPC and HTTP+JSON error shapes, `A2A-Version`, push-notification and extension gates, SSE framing, auth enforcement, leak checks. Passive by default; `--active` also sends one harmless message (15 checks need it). Fails closed: an unreachable agent exits non-zero. `--format text\|json\|junit\|sarif`, `--binding`, `--only`, `--header` (sent only to the card's host). |
+| `a2aops conformance <url>` | Live A2A v1.0 protocol checks (49 checks, each with a MUST/SHOULD/MAY level and a spec section): card serving and caching, JSON-RPC and HTTP+JSON error shapes, `A2A-Version`, push-notification and extension gates, SSE framing, auth enforcement, leak checks. Passive by default; `--active` also sends one harmless message (15 checks need it). Fails closed: an unreachable agent exits non-zero. `--format text\|json\|junit\|sarif`, `--binding`, `--only`, `--skip` (an unknown check id is an error, not a green empty run), `--header` (sent only to the card's host). Exits 2 if `--binding` names an interface the card does not offer, or if every check was skipped. |
 | `a2aops card verify <src> --jwks KEYS` | Verify the card's JWS signatures (ES256/384, RS256/384/512) against keys you trust, in pure Python. `alg` none/HS* are refused, the key decides the algorithm family, and `jku` is never followed unless you pass `--trust-jku` and it is on the card's own host. |
 | `a2aops compat <src>` | Detect the card version and print a v0.x → v1.0 migration checklist. Exit 1 if migration actions remain. `--format json` available. |
 | `a2aops auth <src>` | Check the declared auth surface: every `securityRequirements` entry must reference a declared scheme; OIDC discovery documents must resolve and expose a `token_endpoint`; OAuth2 flows need token URLs. Read-only. `--offline` skips remote fetches. Card-supplied URLs pass an SSRF guard (see Security). |
@@ -110,9 +126,18 @@ working directory become absolute `file://` URIs.
 | `a2aops play demo` | Run the built-in two-agent scenario on localhost; writes a timestamped JSONL wire log. |
 | `a2aops play run <scenario.json>` | Run your own scenario: `{"agents": [{"name":…}], "script": [{"from":…, "to":…, "text":…}]}`. |
 
-Common options: `--format text|json|sarif` (`card check`, `card diff`, `auth`),
+Common options: `--ignore CODE` (a code such as `W203` or a prefix such as `S8`; repeatable or comma-separated),
+`--baseline FILE` / `--write-baseline FILE` (`card check`, `card diff`, `card verify`, `auth`), `--format text|json|sarif` (`card check`, `card diff`, `auth`),
 `--format junit` (`conformance`, `card check`), `--strict`, `--timeout`, and `--card-path /custom/card.json` for agents that
 serve their card outside `/.well-known`.
+
+**Suppression and baselines.** `--write-baseline FILE` records today's findings
+and exits 0. `--baseline FILE` then hides exactly those (same code at the same
+card path; the wording is not part of the identity, so upgrading a2aops does not
+resurrect them) and fails only on anything new. Everything hidden is counted in
+the output (`hidden by --ignore/--baseline`, `"suppressed"` in JSON), an
+unreadable or malformed baseline is exit 2, and an `--ignore` that is not a code
+is exit 2. Baselines cover card findings, not `conformance` checks.
 
 Exit codes: `0` clean · `1` findings reported · `2` usage/operational failure.
 
@@ -169,14 +194,33 @@ AgentCards are attacker-controllable input, so `a2aops` treats them that way:
   re-checked. `--allow-private` turns this off for local development stacks.
 - **Size caps.** Network JSON bodies are capped at 2 MiB, local files and stdin
   at 16 MiB.
+- **Strict JSON.** Every untrusted document (cards, discovery documents, JWKS,
+  JWS headers, task and SSE payloads) is parsed by a strict loader: duplicate
+  object keys are rejected (parsers disagree on which value wins, so a card -
+  or a JWS header with two `alg` keys - could show a reviewer one value and a
+  client another), as are `NaN`/`Infinity`, nesting deeper than 100 levels, and
+  oversized integers. A 100,000-deep array is a one-line error, not a traceback.
+  Cost: a card with a duplicate key is exit 2 rather than a lint finding.
+- **Wall-clock read limit.** `--timeout` is a per-read socket timeout, so a
+  server dripping one byte every few seconds used to hold a run for as long as it
+  liked. Bodies are now also cut off after 30 s in total.
+- **Stream limits.** `stream` stops a connection whose single SSE line exceeds
+  4 MiB, remembers at most 100,000 event ids, and exits 1 when it gives up
+  reconnecting (it used to exit 0).
 - **Terminal-safe output.** Control characters, ANSI escapes, Unicode bidi
   marks/overrides/isolates, zero-width characters and line separators from
   card, task and stream text are escaped before printing, so a hostile card can't
-  rewrite your terminal or fake an "OK". JSON/SARIF output is JSON-escaped.
+  rewrite your terminal or fake an "OK". Lone UTF-16 surrogates are escaped as
+  well, and stdout/stderr fall back to backslash escapes when the console cannot
+  encode a character (cp1252, ASCII), so echoed card text can no longer crash a
+  run with a `UnicodeEncodeError`. JSON/SARIF output is JSON-escaped.
 
 ## How it compares
 
-Facts below come from each project's own page as of 2026-11-06; follow the
+Facts below come from each project's own page as of 2026-11-06 (a2a-lint's
+PyPI page re-read on 2026-11-07: still 0.1.1, documents `--live`, `--strict`,
+`--json`, and no baseline, ignore or SARIF option; the other rows were not
+re-read and may have changed); follow the
 links to check them. "Not documented" means the page does not mention it, not
 that the feature cannot exist.
 
@@ -188,7 +232,7 @@ that the feature cannot exist.
 | [capiscio/validate-a2a](https://awesome.ecosyste.ms/projects/github.com%2Fcapiscio%2Fvalidate-a2a) | GitHub Action | JWS signature verification, compliance/trust/availability scores | Page states it targets the A2A v0.3.0 spec |
 | [a2a-compliance](https://awesome.ecosyste.ms/projects/github.com%2FUltraSkye%2Fa2a-compliance) | TypeScript CLI, Action, dashboard | Security probes (SSRF, CORS, DNS rebinding), JSON/JUnit/SARIF, snapshot baselines | Node toolchain |
 | [a2acli](https://pkg.go.dev/github.com/ghchinoy/a2acli@v1.3.0) | Go CLI | `send`/`watch`/`get` with a streaming TUI, JSON/NDJSON output | Client tool; card validation not documented |
-| **a2aops** | Python CLI + library | Card-to-card breaking-change diff with a semver recommendation, v1.0 live conformance suite (49 checks, spec-referenced), pure-Python JWS card verification, security lint, v0.x → v1.0 migration report, SARIF/JUnit, SSE resubscribe, local playground | Zero dependencies; conformance is a smaller suite than the official TCK (see below); no gRPC probes; JWS verifier is not constant-time |
+| **a2aops** | Python CLI + library | Card-to-card breaking-change diff with a semver recommendation, v1.0 live conformance suite (49 checks, spec-referenced), pure-Python JWS card verification, security lint, v0.x → v1.0 migration report, SARIF/JUnit, baselines and `--ignore` for adopting on an existing card, `explain` for every code, SSE resubscribe, local playground | Zero dependencies; conformance is a smaller suite than the official TCK (see below); no gRPC probes; JWS verifier is not constant-time |
 
 ### Measured, not just described
 
@@ -208,6 +252,7 @@ checking the spec text (the relabeling is in the git history of `bench/cards.py`
 | | official a2a-inspector `validate` v1.0.0-alpha.1 | 1.00 | 0.92 | Go package, run through a throwaway test harness |
 | | a2a-lint 0.1.1 | 0.49 | 0.97 | A2A 0.3 only: it flags every v1.0 card (no `url`) |
 | Does the conformance suite catch a broken agent? | a2aops conformance vs 32 injected faults (fault-injecting proxy in front of the strict mock) | n/a | 32 / 32 | clean agent: 0 false alarms in 49 checks (5 skipped) |
+| Does hostile input crash it? (seeded fuzz, 6000 mutated cards through check, diff, compat, auth, SARIF/JSON/JUnit) | `python -m bench.fuzz` | n/a | 0 crashes | 2983 inputs rejected with a clean error, 3017 processed; the two crash classes found by hand before this run (deep JSON, lone surrogates) are regression tests, not fuzz finds |
 | Right semver bump for a card change? (25 labeled pairs) | `card diff --semver` | n/a | 25 / 25 exact | "any difference is major" snapshot test: 14 / 25 |
 
 The same suite passes 42 of 49 checks against the official Python SDK
@@ -269,8 +314,9 @@ no install.
    structural change", not "identical".
 7. **SSRF guard limits.** The host is resolved for the check and again by the
    HTTP client to connect, so a DNS-rebinding attacker with a very short TTL can
-   race it. Use `--offline` for cards you do not trust at all. SSE stream lines
-   are not size-capped (long-lived streams legitimately carry large artifacts).
+   race it. Use `--offline` for cards you do not trust at all. `stream` caps one SSE
+   line at 4 MiB (conformance: 1 MiB per line, 8 MiB per stream), so a
+   legitimately larger single event is reported as a broken stream.
 8. **Signature verification is narrow.** `card verify` handles ES256/384 and
    RS256/384/512 only (no PS*, EdDSA, `crit`), is written for correctness and
    not constant-time, and the official Python SDK canonicalizes differently
@@ -286,7 +332,8 @@ no install.
 
 ```bash
 cd a2aops
-PYTHONPATH=src python3 -m unittest discover -s tests   # 243 tests, zero deps
+PYTHONPATH=src python3 -m unittest discover -s tests   # 284 tests, zero deps
+PYTHONPATH=src python3 -m bench.fuzz 6000                # hostile-input fuzz, exit 1 on any crash
 python3 -m compileall -q src tests
 ```
 
@@ -294,8 +341,9 @@ Layout: `src/a2aops/` — `card.py` (fetch/validate/lint), `compat.py`,
 `authcheck.py`, `states.py` (wire-vocabulary normalization), `sse.py`,
 `tasks.py` (inspector + poll), `playground.py` (mock agents + scenarios),
 `diff.py` (breaking-change rules), `secreq.py` (security-requirement shapes),
-`report.py` (JSON/SARIF), `net.py` (size
-caps, SSRF guard, terminal-safe output), `cli.py`, `spec.py` +
+`report.py` (JSON/SARIF), `locate.py` (finding path to source line), `suppress.py`
+(`--ignore`, baselines), `explain.py` (code catalogue), `net.py` (size caps, strict
+JSON, SSRF guard, terminal-safe output), `cli.py`, `spec.py` +
 `spec_snapshot.json` (pinned spec knowledge).
 
 License: MIT. Built by Calas Automations Inc.
