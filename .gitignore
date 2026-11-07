@@ -10,3 +10,4 @@ __pycache__/
 .pytest_cache/
 # Playground wire logs written by `a2aops play`
 a2aops-session.jsonl
+bench/corpus/

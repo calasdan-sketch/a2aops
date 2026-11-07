@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.0 — unreleased
+
+Verified against A2A 1.0.0 (spec page) / proto 1.0.1, and against the official
+Python SDK 1.3.0 running as a real v1.0 server.
+
+### Fixed (behaviour changes)
+- **Client tools spoke pre-1.0.** `task poll`, `stream` and the playground used
+  `tasks/get`, `tasks/resubscribe` and `/v1/...` paths. They now use the v1.0
+  PascalCase methods (`GetTask`, `SubscribeToTask`, ...), REST paths without a
+  version prefix, the `A2A-Version` header, and the `SendMessageResponse` /
+  `StreamResponse` wrappers. `--legacy` style behaviour remains for old agents.
+- `E105` no longer flags gRPC `host:port` targets or custom-binding URIs (spec 5.8).
+- `W204` removed; `I209`, `W212`, `W213` added for the v1.0 shapes.
+- Mock agent is now strict v1.0 by default (`legacy=True` for the old behaviour),
+  serves `Cache-Control`/`ETag`/304 on the card and an HTTP+JSON interface.
+- Subscribing to an already-final task no longer loops.
+
+### Added
+- `a2aops conformance`: 49 live checks (15 active), spec-referenced, text/JSON/JUnit/SARIF.
+- `a2aops card verify`: pure-Python JWS verification with the attack list refused (`alg` none/HS*, `jku` as attacker input, key/alg family mismatch).
+- Proto-derived structure checks (`E120`-`E125`, `W210`, `W211`, `W216`) and security lint (`S801`-`S808`).
+- `card diff --semver` / `--enforce-semver` (`D610`, `D611`); `--format junit`.
+- `bench/`: card corpus, mutation benchmark, semver benchmark, `RESULTS.json`.
+- `action.yml`: composite GitHub Action wrapping `card check` and `conformance`.
+
+### Known gaps
+- No gRPC probes; JWS limited to ES*/RS*; official TCK mutation comparison not completed (unverified).
+
 ## 1.2.0 — unreleased
 
 ### Fixed after independent panel review (synapse-1)

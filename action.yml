@@ -1,0 +1,36 @@
+name: a2aops
+description: Lint an A2A AgentCard and optionally run live conformance checks against a deployed agent.
+inputs:
+  card:
+    description: Path to the agent card JSON file to lint.
+    required: false
+  agent-url:
+    description: Base URL of a running agent to run conformance checks against.
+    required: false
+  strict:
+    description: Treat warnings as failures.
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - shell: bash
+      env:
+        A2AOPS_CARD: ${{ inputs.card }}
+        A2AOPS_URL: ${{ inputs.agent-url }}
+        A2AOPS_STRICT: ${{ inputs.strict }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        python -m pip install "$ACTION_PATH"
+        flags=""
+        [ "$A2AOPS_STRICT" = "true" ] && flags="--strict"
+        if [ -z "$A2AOPS_CARD" ] && [ -z "$A2AOPS_URL" ]; then
+          echo "set card and/or agent-url" >&2; exit 2
+        fi
+        [ -n "$A2AOPS_CARD" ] && a2aops card check "$A2AOPS_CARD" $flags
+        [ -n "$A2AOPS_URL" ] && a2aops conformance "$A2AOPS_URL" $flags
+        exit 0

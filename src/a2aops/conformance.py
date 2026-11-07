@@ -31,12 +31,12 @@ import json
 import re
 import time
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 from xml.sax.saxutils import escape, quoteattr
 
 from . import wire
-from .card import ERROR, WARNING, Diagnostic, check_card, has_errors
+from .card import ERROR, WARNING, Diagnostic, check_card
 from .net import clean
 
 PASS, FAIL, WARN, SKIP = "pass", "fail", "warn", "skip"
@@ -443,7 +443,7 @@ def r_auth_enforced(ctx: Ctx):
     rr = ctx.rpc(wire.M_GET, {"id": "a2aops-no-such-task"}, authed=False)
     require(not rr.http.error, f"transport error: {rr.http.error}")
     require(_is_auth_wall(rr.http) or (rr.code is not None and rr.code not in (-32001,) and rr.http.status >= 400),
-            f"card declares auth but an anonymous GetTask got " +
+            "card declares auth but an anonymous GetTask got " +
             (f"JSON-RPC {rr.code} {rr.reason or ''}" if rr.error else "a result") + f" (HTTP {rr.http.status}); "
             "declared auth is not enforced")
 
@@ -893,6 +893,8 @@ def to_json(results: list[Result], url: str, active: bool) -> str:
 
 
 def to_junit(results: list[Result], url: str) -> str:
+    results = [Result(clean(r.id), clean(r.title), clean(r.level), clean(r.spec), clean(r.group), r.status, clean(r.detail), r.elapsed_ms)
+               for r in results]
     s = summarize(results)
     out = ['<?xml version="1.0" encoding="UTF-8"?>',
            f'<testsuites name="a2aops conformance" tests="{s["total"]}" failures="{s["fail"] + s["warn"]}" skipped="{s["skip"]}">']

@@ -36,7 +36,7 @@ _INVISIBLE = re.compile(
     "[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f­؜᠎​-‏"
     "‪-‮⁠-⁯  ﻿￹-￻\U000e0000-\U000e007f]")
 
-_INJECTION = [re.compile(p, re.I) for p in (
+_INJECTION = [re.compile(p, re.I | re.M) for p in (
     r"ignore (all |any |the )?(previous|prior|above|earlier|preceding) (instructions|prompts?|rules|messages)",
     r"disregard (all |any |the )?(previous|prior|above|earlier|your) (instructions|prompts?|rules)",
     r"(forget|override) (all |your |the )?(previous |prior |earlier )?(instructions|rules|guidelines)",

@@ -132,3 +132,28 @@ def to_sarif(diags: list[Diagnostic], *, command: str, artifact_uri: str,
         }],
     }
     return json.dumps(doc, indent=2)
+
+
+def to_junit(diags: list[Diagnostic], *, command: str, source: str, strict: bool = False) -> str:
+    """JUnit XML: one failing testcase per error (and per warning with ``strict``)."""
+    from xml.sax.saxutils import escape, quoteattr
+    from .net import clean   # control/bidi characters are not even legal XML 1.0
+    bad = {ERROR, WARNING} if strict else {ERROR}
+    diags = [Diagnostic(d.severity, d.code, clean(d.message), clean(d.path)) for d in diags]
+    source = clean(source)
+    cases = []
+    for d in diags:
+        name = f"{d.code} {d.path}".strip()
+        if d.severity in bad:
+            cases.append(f'    <testcase classname={quoteattr("a2aops." + command)} name={quoteattr(name)}>'
+                         f'<failure type={quoteattr(d.severity)} message={quoteattr(d.message[:300])}>'
+                         f'{escape(d.message)}</failure></testcase>')
+        else:
+            cases.append(f'    <testcase classname={quoteattr("a2aops." + command)} name={quoteattr(name)}>'
+                         f'<system-out>{escape(d.severity + ": " + d.message)}</system-out></testcase>')
+    if not cases:
+        cases.append(f'    <testcase classname={quoteattr("a2aops." + command)} name="no findings"/>')
+    fails = sum(1 for d in diags if d.severity in bad)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<testsuites><testsuite name={quoteattr("a2aops " + command + " " + source)} '
+            f'tests="{len(cases)}" failures="{fails}">\n' + "\n".join(cases) + '\n  </testsuite></testsuites>')

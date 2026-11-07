@@ -1,7 +1,7 @@
 # a2aops — operational toolkit for the A2A protocol
 
-**Lint, diff and debug A2A agents from one zero-dependency CLI — and catch
-breaking AgentCard changes in CI before your clients do.**
+**Lint, diff, verify and conformance-test A2A agents from one zero-dependency
+CLI — and catch breaking AgentCard changes in CI before your clients do.**
 
 `a2aops` is an operational toolkit for the Agent-to-Agent (A2A) protocol
 (v1.0, Linux Foundation / AAIF): AgentCard validation and lint, **breaking-change
@@ -30,7 +30,13 @@ a2aops card check https://agent.example.com
 a2aops card check ./agent-card.json --strict
 
 # 2. Will my card change break existing clients?
-a2aops card diff https://agent.example.com ./agent-card.json
+a2aops card diff https://agent.example.com ./agent-card.json --semver
+
+# 2b. Does the agent actually speak v1.0? (49 checks with spec references)
+a2aops conformance https://agent.example.com --active
+
+# 2c. Is the card signed by a key you trust?
+a2aops card verify https://agent.example.com --jwks trusted-keys.json
 
 # 3. Still on the pre-1.0 shape? Get the migration checklist.
 a2aops compat https://agent.example.com
@@ -94,16 +100,18 @@ working directory become absolute `file://` URIs.
 | `a2aops card check <src>` | `src` is a base URL, a JSON file, or `-`. For URLs: fetch `/.well-known/agent-card.json` (falls back to legacy `/.well-known/agent.json` and tells you). Validate against the A2A v1.0 schema and lint for robustness. Exit 1 on errors (`--strict`: on warnings too). |
 | `a2aops card diff <old> <new>` | Breaking-change report between two cards (each a URL, file, or one `-`). Errors = breaks existing clients (removed skill/interface/input mode — including a skill narrowing the modes it used to inherit — capability turned off, auth newly required or an auth alternative removed at card or skill level, an extension becoming required, an interface's `tenant` changing); warnings = risky (preferred interface reordered, tags dropped, version not bumped, breaking change without a major bump); infos = additive. |
 | `a2aops card fetch <base>` | Print the raw card JSON. |
+| `a2aops conformance <url>` | Live A2A v1.0 protocol checks (49 checks, each with a MUST/SHOULD/MAY level and a spec section): card serving and caching, JSON-RPC and HTTP+JSON error shapes, `A2A-Version`, push-notification and extension gates, SSE framing, auth enforcement, leak checks. Passive by default; `--active` also sends one harmless message (15 checks need it). Fails closed: an unreachable agent exits non-zero. `--format text\|json\|junit\|sarif`, `--binding`, `--only`, `--header` (sent only to the card's host). |
+| `a2aops card verify <src> --jwks KEYS` | Verify the card's JWS signatures (ES256/384, RS256/384/512) against keys you trust, in pure Python. `alg` none/HS* are refused, the key decides the algorithm family, and `jku` is never followed unless you pass `--trust-jku` and it is on the card's own host. |
 | `a2aops compat <src>` | Detect the card version and print a v0.x → v1.0 migration checklist. Exit 1 if migration actions remain. `--format json` available. |
 | `a2aops auth <src>` | Check the declared auth surface: every `securityRequirements` entry must reference a declared scheme; OIDC discovery documents must resolve and expose a `token_endpoint`; OAuth2 flows need token URLs. Read-only. `--offline` skips remote fetches. Card-supplied URLs pass an SSRF guard (see Security). |
 | `a2aops task poll <base> <task-id>` | Poll a task to a terminal state (`--binding rest\|jsonrpc`), printing each transition and any lifecycle violations. |
 | `a2aops task inspect <events.jsonl>` | Offline inspection of a JSONL event log (`{"task_id":…, "state":…, "message"?}` per line) — or a playground wire log straight from `a2aops play demo --log`. Flags transitions out of terminal states, `UNSPECIFIED`/unknown states, and `INPUT_REQUIRED` with no guidance. |
-| `a2aops stream <base> <task-id>` | SSE stream with exponential-backoff resubscribe (`tasks/resubscribe` or `POST /v1/tasks/{id}:subscribe`), event-id deduping, and clean close on terminal states. Reconnects and duplicates are reported, never hidden. |
+| `a2aops stream <base> <task-id>` | SSE stream with exponential-backoff resubscribe (`SubscribeToTask`, or the REST `/tasks/{id}:subscribe` path; GET then POST fallback because the spec proto and prose disagree on the verb), event-id deduping, and clean close on terminal states. Reconnects and duplicates are reported, never hidden. |
 | `a2aops play demo` | Run the built-in two-agent scenario on localhost; writes a timestamped JSONL wire log. |
 | `a2aops play run <scenario.json>` | Run your own scenario: `{"agents": [{"name":…}], "script": [{"from":…, "to":…, "text":…}]}`. |
 
 Common options: `--format text|json|sarif` (`card check`, `card diff`, `auth`),
-`--strict`, `--timeout`, and `--card-path /custom/card.json` for agents that
+`--format junit` (`conformance`, `card check`), `--strict`, `--timeout`, and `--card-path /custom/card.json` for agents that
 serve their card outside `/.well-known`.
 
 Exit codes: `0` clean · `1` findings reported · `2` usage/operational failure.
@@ -138,6 +146,11 @@ migrate.
 | `D5xx` | `card diff`: breaking for existing clients (`D510`/`D511`: skill-level auth) |
 | `D6xx` | `card diff`: risky / likely to surprise clients |
 | `D7xx` | `card diff`: additive or informational |
+| `D610` / `D611` | `card diff --semver`: version moved less than the changes need / version is not semver |
+| `E120`–`E125`, `W210`, `W211`, `W216` | Proto-derived structure: wrong type, empty required array (spec 5.7), snake_case field (5.5), near-miss field name, non-media-type mode |
+| `S8xx` | Security lint: `S801` hidden/bidi characters, `S802` prompt-injection phrasing (heuristic), `S803` renderer-fetch markup, `S804` loopback/private/metadata URL, `S805` endpoint on a different host than the card, `S807` credentials in URL, `S808` secret-shaped text |
+| `G9xx` | Card signatures (`G902` verified, `G903` failed, `G906` `jku` ignored, `G907` algorithm refused) |
+| conformance ids | `CARD-*`, `RPC-*`, `REST-*`, `SSE-*`, `SEC-*` etc. in `conformance` output, each with a spec section |
 
 ## Security
 
@@ -175,7 +188,40 @@ that the feature cannot exist.
 | [capiscio/validate-a2a](https://awesome.ecosyste.ms/projects/github.com%2Fcapiscio%2Fvalidate-a2a) | GitHub Action | JWS signature verification, compliance/trust/availability scores | Page states it targets the A2A v0.3.0 spec |
 | [a2a-compliance](https://awesome.ecosyste.ms/projects/github.com%2FUltraSkye%2Fa2a-compliance) | TypeScript CLI, Action, dashboard | Security probes (SSRF, CORS, DNS rebinding), JSON/JUnit/SARIF, snapshot baselines | Node toolchain |
 | [a2acli](https://pkg.go.dev/github.com/ghchinoy/a2acli@v1.3.0) | Go CLI | `send`/`watch`/`get` with a streaming TUI, JSON/NDJSON output | Client tool; card validation not documented |
-| **a2aops** | Python CLI + library | Card-to-card breaking-change diff (card and skill level, v0.3 and v1.0 shapes), v0.x → v1.0 migration report, SARIF, SSRF-guarded auth checks, SSE resubscribe, local playground | Zero dependencies; no JWS signature check or live conformance probe yet (see Limitations) |
+| **a2aops** | Python CLI + library | Card-to-card breaking-change diff with a semver recommendation, v1.0 live conformance suite (49 checks, spec-referenced), pure-Python JWS card verification, security lint, v0.x → v1.0 migration report, SARIF/JUnit, SSE resubscribe, local playground | Zero dependencies; conformance is a smaller suite than the official TCK (see below); no gRPC probes; JWS verifier is not constant-time |
+
+### Measured, not just described
+
+Everything below is reproducible with `python -m bench.make_results` and is
+committed in `bench/RESULTS.json`. Read the caveats: the card corpus (78 cards,
+39 valid and 39 deliberately broken) was written by the same people who wrote
+the checker, so a2aops' own score is **optimistic by construction**. The
+official Inspector's validator was scored on the same cards after the corpus
+was frozen; its misses show where the corpus differs from what it targets, not
+that it is wrong. About ten cards were relabeled after the first run, after
+checking the spec text (the relabeling is in the git history of `bench/cards.py`).
+
+| Task | Checker | Precision | Recall | Notes |
+|---|---|---|---|---|
+| Is this card invalid? (78 cards) | a2aops 1.3.0 | 1.00 | 1.00 | own corpus, see caveat |
+| | a2aops 1.2.0 (previous release) | 0.83 | 0.64 | 5 valid v1.0 cards flagged, 14 broken ones missed |
+| | official a2a-inspector `validate` v1.0.0-alpha.1 | 1.00 | 0.92 | Go package, run through a throwaway test harness |
+| | a2a-lint 0.1.1 | 0.49 | 0.97 | A2A 0.3 only: it flags every v1.0 card (no `url`) |
+| Does the conformance suite catch a broken agent? | a2aops conformance vs 32 injected faults (fault-injecting proxy in front of the strict mock) | n/a | 32 / 32 | clean agent: 0 false alarms in 49 checks (5 skipped) |
+| Right semver bump for a card change? (25 labeled pairs) | `card diff --semver` | n/a | 25 / 25 exact | "any difference is major" snapshot test: 14 / 25 |
+
+The same suite passes 42 of 49 checks against the official Python SDK
+(`a2a-sdk` 1.3.0) acting as a real v1.0 server; every MUST-level check passed.
+The two SHOULD-level warnings were a missing `Cache-Control` on the card and
+no `application/a2a+json` content type on errors. The mutation run of the
+official a2a-tck through the same proxy did not finish in this session, so there
+is no TCK-versus-a2aops detection comparison: **unverified**.
+
+Official TCK facts (from its repository at the time of writing): pytest-based,
+458 tests, run with `./run_tck.py --sut-host URL --transport jsonrpc,http_json`.
+It is far broader than `a2aops conformance` and also covers gRPC; use it for
+certification-grade testing. a2aops conformance is for fast CI feedback with
+no install.
 
 ## Design decisions (from the expert panel)
 
@@ -225,15 +271,22 @@ that the feature cannot exist.
    HTTP client to connect, so a DNS-rebinding attacker with a very short TTL can
    race it. Use `--offline` for cards you do not trust at all. SSE stream lines
    are not size-capped (long-lived streams legitimately carry large artifacts).
-8. **No signed-card verification yet.** `signatures` on a card are accepted but
-   not cryptographically verified (that needs a crypto dependency this release
-   avoids).
+8. **Signature verification is narrow.** `card verify` handles ES256/384 and
+   RS256/384/512 only (no PS*, EdDSA, `crit`), is written for correctness and
+   not constant-time, and the official Python SDK canonicalizes differently
+   from spec section 8.4 (RFC 8785); a2aops accepts either and says which
+   matched (`G909`). It proves the card matches a key you trust, nothing about
+   the operator.
+9. **Conformance is black-box and v1.0 only.** 49 checks, no gRPC, no
+   multi-tenant probes. The prompt-injection lint (`S802`) is a phrase
+   heuristic: it will miss paraphrases and sometimes flag harmless prose.
+   Subscribe uses GET then POST because the spec proto and prose disagree.
 
 ## Development
 
 ```bash
 cd a2aops
-PYTHONPATH=src python3 -m unittest discover -s tests   # 187 tests, zero deps
+PYTHONPATH=src python3 -m unittest discover -s tests   # 243 tests, zero deps
 python3 -m compileall -q src tests
 ```
 

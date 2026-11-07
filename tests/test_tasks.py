@@ -1,11 +1,9 @@
 """Tests for the task lifecycle inspector."""
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from a2aops import tasks as tasks_mod
 from a2aops.tasks import (Observation, TaskInspector, observations_from_jsonl,
                           poll_task)
 

@@ -37,7 +37,7 @@ import json
 import math
 import re
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 MAX_DEPTH = 128
 

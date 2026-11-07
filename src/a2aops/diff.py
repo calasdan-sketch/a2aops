@@ -14,7 +14,7 @@ so a clean diff means "no known-breaking structural change", not "identical".
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from . import secreq
 from .card import ERROR, INFO, WARNING, Diagnostic
@@ -221,3 +221,78 @@ def diff_cards(old: Any, new: Any) -> list[Diagnostic]:
     order = {ERROR: 0, WARNING: 1, INFO: 2}
     out.sort(key=lambda d: (order.get(d.severity, 3), d.code))
     return out
+
+
+# --------------------------------------------------------------------------
+# Semver recommendation
+# --------------------------------------------------------------------------
+
+BUMP_ORDER = {"none": 0, "patch": 1, "minor": 2, "major": 3}
+
+#: card fields whose change cannot affect how a client calls the agent
+_COSMETIC_TOP = ("name", "description", "version", "documentationUrl", "iconUrl", "provider", "signatures")
+_COSMETIC_SKILL = ("name", "description", "examples")
+
+
+def _contract_view(card: dict) -> dict:
+    c = {k: v for k, v in card.items() if k not in _COSMETIC_TOP}
+    skills = c.get("skills")
+    if isinstance(skills, list):
+        c["skills"] = [{k: v for k, v in s.items() if k not in _COSMETIC_SKILL} if isinstance(s, dict) else s
+                       for s in skills]
+    return c
+
+
+def recommend_bump(old: Any, new: Any, diags: Optional[list[Diagnostic]] = None) -> str:
+    """The semver bump these two cards deserve: ``major`` | ``minor`` | ``patch`` | ``none``.
+
+    * ``major`` - at least one finding breaks existing clients (``D5xx`` errors, or
+      a ``D6xx`` finding that removes something clients matched on);
+    * ``minor`` - the contract grew or changed without breaking anyone (``D7xx``
+      additions, other ``D6xx`` notes, any contract-field difference);
+    * ``patch`` - only cosmetic fields differ (name, descriptions, examples,
+      provider, docs/icon URLs, signatures);
+    * ``none`` - identical apart from ``version``.
+    """
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return "major"
+    diags = diff_cards(old, new) if diags is None else diags
+    removal_codes = {"D603", "D604", "D605", "D609"}
+    if any(d.severity == ERROR or d.code in removal_codes for d in diags):
+        return "major"
+    if any(d.code not in ("D607", "D608") and d.severity in (WARNING, INFO) for d in diags):
+        return "minor"
+    if _contract_view(old) != _contract_view(new):
+        return "minor"
+    rest_old = {k: v for k, v in old.items() if k != "version"}
+    rest_new = {k: v for k, v in new.items() if k != "version"}
+    return "patch" if rest_old != rest_new else "none"
+
+
+def actual_bump(old_version: Any, new_version: Any) -> str:
+    """How the ``version`` string moved: major/minor/patch/none, or ``unknown``/``downgrade``."""
+    a, b = _semver(old_version), _semver(new_version)
+    if a is None or b is None:
+        return "unknown"
+    a, b = (a + (0, 0, 0))[:3], (b + (0, 0, 0))[:3]
+    if b < a:
+        return "downgrade"
+    if b == a:
+        return "none"
+    return "major" if b[0] > a[0] else "minor" if b[1] > a[1] else "patch"
+
+
+def check_bump(old: Any, new: Any, diags: Optional[list[Diagnostic]] = None) -> list[Diagnostic]:
+    """``D610`` when the version moved less than :func:`recommend_bump` says it must."""
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return []
+    want = recommend_bump(old, new, diags)
+    got = actual_bump(old.get("version"), new.get("version"))
+    if got in ("unknown",):
+        return [_d(WARNING, "D611", f"versions {old.get('version')!r} -> {new.get('version')!r} are not semver; "
+                   f"cannot compare with the recommended '{want}' bump", "version")]
+    if got == "downgrade" or BUMP_ORDER[got] < BUMP_ORDER[want]:
+        return [_d(ERROR, "D610",
+                   f"these changes need a '{want}' version bump; version went {old.get('version')} -> "
+                   f"{new.get('version')} ({got})", "version")]
+    return []

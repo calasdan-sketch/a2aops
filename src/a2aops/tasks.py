@@ -30,7 +30,7 @@ from typing import Any, Callable, Optional
 
 from . import wire
 from .card import ERROR, WARNING, Diagnostic
-from .net import USER_AGENT, clean, read_capped
+from .net import clean
 from .states import is_terminal, normalize_state, state_class
 
 

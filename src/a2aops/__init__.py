@@ -5,5 +5,5 @@ checks, task lifecycle inspection, SSE streaming with resubscription, and a
 local multi-agent playground. Zero dependencies.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __all__ = ["__version__"]

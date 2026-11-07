@@ -58,6 +58,8 @@ def _emit(args, diags, *, command: str, label: str, text=None,
         print(report_mod.to_json(diags, command=command, source=label, strict=strict))
     elif fmt == "sarif":
         print(report_mod.to_sarif(diags, command=command, artifact_uri=label, source_text=text))
+    elif fmt == "junit":
+        print(report_mod.to_junit(diags, command=command, source=label, strict=strict))
     else:
         for line in banner:
             print(clean(line))
@@ -113,9 +115,17 @@ def cmd_card_diff(args) -> int:
     except CardFetchError as e:
         return _err(e)
     diags = diff_cards(old, new)
+    banner = [f"diff {'stdin' if args.old == '-' else args.old} -> {'stdin' if args.new == '-' else args.new}"]
+    if args.semver or args.enforce_semver:
+        from . import diff as diff_mod
+        want = diff_mod.recommend_bump(old, new, diags)
+        got = diff_mod.actual_bump(old.get("version") if isinstance(old, dict) else None,
+                                   new.get("version") if isinstance(new, dict) else None)
+        banner.append(f"recommended version bump: {want} (version moved: {got})")
+        if args.enforce_semver:
+            diags = diags + diff_mod.check_bump(old, new, diags)
     return _emit(args, diags, command="card-diff", label=new_label, text=new_text,
-                 banner=[f"diff {'stdin' if args.old == '-' else args.old} -> "
-                         f"{'stdin' if args.new == '-' else args.new}"],
+                 banner=banner,
                  ok_text="OK: no breaking or notable changes detected.")
 
 
@@ -319,8 +329,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="fetch the card from this path instead of /.well-known discovery")
 
     def out_opts(sp, sarif=True):
-        sp.add_argument("--format", choices=["text", "json", "sarif"] if sarif else ["text", "json"],
-                        default="text", help="output format (sarif = GitHub code scanning)")
+        sp.add_argument("--format", choices=["text", "json", "sarif", "junit"] if sarif else ["text", "json"],
+                        default="text", help="output format (sarif = GitHub code scanning, junit = CI test report)")
         if sarif:
             sp.add_argument("--strict", action="store_true", help="warnings also fail (exit 1)")
 
@@ -347,6 +357,10 @@ def build_parser() -> argparse.ArgumentParser:
     cd.add_argument("new", help="the proposed card")
     fetch_opts(cd)
     out_opts(cd)
+    cd.add_argument("--semver", action="store_true",
+                    help="print the version bump these changes deserve (major/minor/patch/none)")
+    cd.add_argument("--enforce-semver", action="store_true",
+                    help="fail (D610) when the new card's version moved less than the recommended bump")
     cd.set_defaults(func=cmd_card_diff)
 
     cp = sub.add_parser("compat", help="v0.x -> v1.0 migration report")

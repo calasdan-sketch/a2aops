@@ -18,7 +18,7 @@ import difflib
 import re
 from typing import Any
 
-from .card import ERROR, INFO, WARNING, Diagnostic
+from .card import ERROR, WARNING, Diagnostic
 
 STR, BOOL, OBJ, ARR_STR, ARR_OBJ = "string", "boolean", "object", "array of strings", "array of objects"
 
@@ -110,8 +110,9 @@ def _check_message(msg: str, obj: dict, path: str, out: list[Diagnostic]) -> Non
         # unknown key: only warn when it is evidently a mistake
         if _SNAKE.match(key) and _snake_to_camel(key) in table:
             out.append(Diagnostic(
-                WARNING, "W214",
-                f"'{key}' is the proto spelling; the spec requires camelCase ('{_snake_to_camel(key)}', spec 5.5)",
+                ERROR, "E125",
+                f"'{key}' is the proto spelling; JSON field names MUST be camelCase "
+                f"('{_snake_to_camel(key)}', spec 5.5) - clients that follow the spec ignore this field",
                 f"{prefix}{key}"))
             continue
         close = difflib.get_close_matches(key, list(table), n=1, cutoff=0.8)
@@ -155,8 +156,8 @@ def validate_structure(card: Any) -> list[Diagnostic]:
                     continue
                 _check_message("AgentExtension", ext, p, out)
                 if not isinstance(ext.get("uri"), str) or not ext.get("uri"):
-                    out.append(Diagnostic(ERROR, "E121", "extension needs a 'uri' (it is how clients "
-                                          "request it via A2A-Extensions)", f"{p}.uri"))
+                    out.append(Diagnostic(WARNING, "W216", "extension has no 'uri' (optional in the proto, but it is "
+                                          "how clients request it via A2A-Extensions)", f"{p}.uri"))
 
     ifaces = card.get("supportedInterfaces")
     if isinstance(ifaces, list):

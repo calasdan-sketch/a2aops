@@ -201,7 +201,12 @@ def validate_card(card: Any) -> list[Diagnostic]:
                 from . import schema as _schema
                 url = iface.get("url")
                 binding = iface.get("protocolBinding")
-                if url is not None and not _schema.interface_url_ok(url, binding):
+                if (url is not None and binding == "GRPC" and isinstance(url, str) and url.strip()
+                        and not _schema.interface_url_ok(url, binding)):
+                    diags.append(Diagnostic(
+                        WARNING, "W213", "gRPC address should be 'hostname:port' (proto AgentInterface.url)",
+                        f"{p}.url"))
+                elif url is not None and not _schema.interface_url_ok(url, binding):
                     want = ("host:port or a URL" if binding == "GRPC" else
                             "an absolute URL" if isinstance(binding, str) and binding not in spec["protocol_bindings"]
                             else "an absolute http(s) URL")

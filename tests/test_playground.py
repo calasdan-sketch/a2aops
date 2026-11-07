@@ -1,6 +1,5 @@
 """Tests for the playground: mock agents, SSE, scenario runs."""
 
-import io
 import json
 import tempfile
 import unittest

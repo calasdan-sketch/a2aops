@@ -6,7 +6,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from a2aops.card import (CardFetchError, check_card, fetch_card,
+from a2aops.card import (CardFetchError, fetch_card,
                          format_diagnostics, has_errors, lint_card,
                          validate_card)
 

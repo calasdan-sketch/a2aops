@@ -1,0 +1,524 @@
+{
+  "cards": {
+    "corpus": {
+      "cards": 78,
+      "valid": 39,
+      "invalid": 39
+    },
+    "a2aops": {
+      "invalid_detection": {
+        "tp": 39,
+        "fp": 0,
+        "fn": 0,
+        "tn": 39,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "code_recall": 1.0,
+      "false_positive_cards": [],
+      "missed_cards": [],
+      "code_misses": []
+    },
+    "a2a-lint": {
+      "invalid_detection": {
+        "tp": 37,
+        "fp": 39,
+        "fn": 1,
+        "tn": 0,
+        "precision": 0.487,
+        "recall": 0.974,
+        "f1": 0.649
+      },
+      "cards_scored": 77,
+      "note": "a2a-lint targets A2A 0.3 (requires `url`), so every v1.0 card is flagged; numbers show the cost of a 0.3-only checker on 1.0 cards"
+    }
+  },
+  "mutants": {
+    "clean_agent": {
+      "false_alarms": [],
+      "checks_run": 49,
+      "skipped": 5,
+      "seconds": 0.4
+    },
+    "mutants": {
+      "total": 32,
+      "detected": 32,
+      "recall": 1.0,
+      "missed": []
+    },
+    "rows": [
+      {
+        "mutant": "no-errorinfo",
+        "why": "errors carry no google.rpc.ErrorInfo",
+        "expect": [
+          "REST-04",
+          "REST-05",
+          "RPC-08"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-03",
+          "REST-04",
+          "REST-05",
+          "REST-06",
+          "REST-07",
+          "REST-22",
+          "REST-23",
+          "RPC-08"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "wrong-notfound-code",
+        "why": "TaskNotFound uses -32000",
+        "expect": [
+          "RPC-07",
+          "RPC-09"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-07",
+          "RPC-08",
+          "RPC-09"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "rest-notfound-200",
+        "why": "unknown task returns HTTP 200 {}",
+        "expect": [
+          "REST-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-04"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "rest-error-500",
+        "why": "unknown task returns HTTP 500",
+        "expect": [
+          "REST-04",
+          "REST-05"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-04",
+          "REST-05"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "ignore-version",
+        "why": "A2A-Version is never checked",
+        "expect": [
+          "REST-03",
+          "RPC-06"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-03",
+          "RPC-06"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "stream-wrong-ctype",
+        "why": "SSE served as text/plain",
+        "expect": [
+          "SSE-01",
+          "SSE-10"
+        ],
+        "detected": true,
+        "flagged": [
+          "SSE-01",
+          "SSE-10"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "stream-json-not-sse",
+        "why": "stream served as application/json",
+        "expect": [
+          "SSE-01",
+          "SSE-10"
+        ],
+        "detected": true,
+        "flagged": [
+          "SSE-01",
+          "SSE-10"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "stream-never-closes",
+        "why": "connection stays open after the final state",
+        "expect": [
+          "SSE-03",
+          "SSE-10"
+        ],
+        "detected": true,
+        "flagged": [
+          "SSE-03",
+          "SSE-10"
+        ],
+        "seconds": 6.4
+      },
+      {
+        "mutant": "event-after-terminal",
+        "why": "an event follows the terminal state",
+        "expect": [
+          "SSE-03"
+        ],
+        "detected": true,
+        "flagged": [
+          "SSE-03",
+          "SSE-10"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "state-v03-vocabulary",
+        "why": "task states in the 0.3 vocabulary",
+        "expect": [
+          "REST-20",
+          "RPC-20",
+          "SSE-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-20",
+          "RPC-20",
+          "SSE-03",
+          "SSE-04",
+          "SSE-10"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "state-unspecified",
+        "why": "TASK_STATE_UNSPECIFIED reported",
+        "expect": [
+          "REST-20",
+          "RPC-20",
+          "SSE-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-20",
+          "RPC-20",
+          "SSE-03",
+          "SSE-04",
+          "SSE-10"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "send-unwrapped",
+        "why": "SendMessage result is a bare Task (0.3 shape)",
+        "expect": [
+          "REST-20",
+          "RPC-20"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-20",
+          "RPC-20"
+        ],
+        "seconds": 0.2
+      },
+      {
+        "mutant": "send-both-oneof",
+        "why": "SendMessageResponse has task AND message",
+        "expect": [
+          "RPC-20"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-20"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "parts-0.3-shape",
+        "why": "parts without text/raw/url/data",
+        "expect": [
+          "REST-20",
+          "RPC-20",
+          "SSE-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-20",
+          "RPC-20"
+        ],
+        "seconds": 0.2
+      },
+      {
+        "mutant": "cancel-terminal-accepted",
+        "why": "cancel of a finished task succeeds",
+        "expect": [
+          "REST-22",
+          "RPC-23"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-22",
+          "RPC-23"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "push-not-gated",
+        "why": "push config accepted although not declared",
+        "expect": [
+          "REST-06",
+          "RPC-10"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-06",
+          "RPC-10"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "extcard-not-gated",
+        "why": "extended card served although not declared",
+        "expect": [
+          "REST-07",
+          "RPC-11"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-07",
+          "RPC-11"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "stack-trace-leak",
+        "why": "error message leaks a stack frame and path",
+        "expect": [
+          "RPC-15"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-15"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "rpc-id-not-echoed",
+        "why": "JSON-RPC response id is null",
+        "expect": [
+          "RPC-03"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-03"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "timestamp-offset",
+        "why": "timestamps end in +00:00 not Z",
+        "expect": [
+          "REST-20",
+          "RPC-20",
+          "SSE-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-20",
+          "RPC-20",
+          "SSE-04"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "subscribe-terminal-streams",
+        "why": "subscribing to a finished task streams",
+        "expect": [
+          "REST-23",
+          "RPC-24"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-23",
+          "RPC-24"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "auth-declared-not-enforced",
+        "why": "card declares bearer auth, server accepts anonymous",
+        "expect": [
+          "REST-10",
+          "RPC-13"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-10",
+          "RPC-13"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "card-no-cache-control",
+        "why": "no Cache-Control on the card",
+        "expect": [
+          "CARD-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "CARD-04"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "card-no-etag",
+        "why": "no ETag on the card",
+        "expect": [
+          "CARD-05"
+        ],
+        "detected": true,
+        "flagged": [
+          "CARD-05"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "card-missing-name",
+        "why": "card without a name",
+        "expect": [
+          "CARD-02"
+        ],
+        "detected": true,
+        "flagged": [
+          "CARD-02"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "card-prompt-injection",
+        "why": "card prose tells the model to ignore instructions",
+        "expect": [
+          "CARD-09"
+        ],
+        "detected": true,
+        "flagged": [
+          "CARD-09"
+        ],
+        "seconds": 0.3
+      },
+      {
+        "mutant": "card-http-500",
+        "why": "card endpoint errors",
+        "expect": [
+          "CARD-01"
+        ],
+        "detected": true,
+        "flagged": [
+          "CARD-01",
+          "CARD-02",
+          "CARD-07"
+        ],
+        "seconds": 0.0
+      },
+      {
+        "mutant": "parse-error-wrong-code",
+        "why": "invalid JSON answered with -32600",
+        "expect": [
+          "RPC-01"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-01"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "unknown-method-null-result",
+        "why": "unknown method answered with result null",
+        "expect": [
+          "RPC-03"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-03",
+          "RPC-04"
+        ],
+        "seconds": 0.5
+      },
+      {
+        "mutant": "list-bad-shape",
+        "why": "ListTasks pageSize is a string",
+        "expect": [
+          "REST-08",
+          "RPC-12"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-08",
+          "RPC-12"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "task-without-contextid",
+        "why": "Task has no contextId",
+        "expect": [
+          "RPC-22"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-22"
+        ],
+        "seconds": 0.4
+      },
+      {
+        "mutant": "legacy-names-accepted",
+        "why": "agent also answers pre-1.0 method names",
+        "expect": [
+          "RPC-04"
+        ],
+        "detected": true,
+        "flagged": [
+          "RPC-04"
+        ],
+        "seconds": 0.4
+      }
+    ]
+  },
+  "diff": {
+    "pairs": 25,
+    "accuracy": {
+      "a2aops": 1.0,
+      "snapshot-diff (any change = major)": 0.56
+    },
+    "a2aops_under_recommended": 0,
+    "a2aops_over_recommended": 0,
+    "wrong": []
+  },
+  "measured_once": {
+    "a2aops 1.2.0 (round 1, commit 53fe4c9) on the same cards": {
+      "tp": 25,
+      "fp": 5,
+      "fn": 14,
+      "tn": 34,
+      "precision": 0.833,
+      "recall": 0.641
+    },
+    "official a2a-inspector validate package v1.0.0-alpha.1 (Go test harness over the same cards)": {
+      "tp": 36,
+      "fp": 0,
+      "fn": 3,
+      "tn": 39,
+      "precision": 1.0,
+      "recall": 0.923
+    }
+  }
+}

@@ -1,9 +1,8 @@
 """Tests for SSE parsing and the resubscribe client."""
 
-import io
 import unittest
 
-from a2aops.sse import (SSEEvent, build_resubscribe_request, parse_sse_stream,
+from a2aops.sse import (build_resubscribe_request, parse_sse_stream,
                         stream_with_resubscribe)
 
 
