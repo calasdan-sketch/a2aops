@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.parse
 import urllib.request
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from . import wire
 from .card import ERROR, WARNING, Diagnostic
 from .net import USER_AGENT, clean, read_capped
 from .states import is_terminal, normalize_state, state_class
@@ -184,33 +186,44 @@ def _observation_row(row: Any, path: str, n: int) -> Optional[Observation]:
     raise ValueError(f"{path}:{n}: each line needs 'task_id' and 'state'")
 
 
-def rest_get_task(base_url: str, task_id: str, timeout: float = 10.0) -> dict:
-    """REST poll: GET {base}/tasks/{task_id}."""
-    url = f"{base_url.rstrip()}/tasks/{task_id}"
-    req = urllib.request.Request(url, headers={"Accept": "application/json",
-                                               "User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(read_capped(resp).decode("utf-8-sig"))
-
-
-def jsonrpc_get_task(base_url: str, task_id: str, timeout: float = 10.0) -> dict:
-    """JSON-RPC poll: tasks/get against the interface URL."""
-    payload = {"jsonrpc": "2.0", "id": f"a2aops-{int(time.time())}",
-               "method": "tasks/get", "params": {"id": task_id}}
-    req = urllib.request.Request(base_url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json",
-                                          "User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.loads(read_capped(resp).decode("utf-8-sig"))
-    if isinstance(body, dict) and "result" in body:
-        return body["result"]
+def rest_get_task(base_url: str, task_id: str, timeout: float = 10.0,
+                  version: str = wire.A2A_VERSION) -> dict:
+    """REST poll: ``GET {interface-url}/tasks/{id}`` [spec 11.3.2]."""
+    url = wire.join_url(base_url, f"/tasks/{urllib.parse.quote(task_id, safe='')}")
+    resp = wire.http_request("GET", url, None, wire.default_headers(version, rest=True), timeout)
+    if resp.error:
+        raise RuntimeError(resp.error)
+    body = resp.json()
+    if resp.status >= 400:
+        err = body.get("error") if isinstance(body, dict) else None
+        msg = err.get("message") if isinstance(err, dict) else None
+        raise RuntimeError(f"HTTP {resp.status}: {msg or resp.text()[:200]}")
+    if not isinstance(body, dict):
+        raise RuntimeError("response is not a JSON object")
     return body
+
+
+def jsonrpc_get_task(base_url: str, task_id: str, timeout: float = 10.0,
+                     legacy: bool = False, version: str = wire.A2A_VERSION) -> dict:
+    """JSON-RPC poll: ``GetTask`` (``tasks/get`` with ``legacy=True``)."""
+    rr = wire.jsonrpc_call(base_url, wire.M_GET, {"id": task_id}, legacy=legacy,
+                           version=None if legacy else version, timeout=timeout)
+    if rr.http.error:
+        raise RuntimeError(rr.http.error)
+    if rr.error is not None:
+        raise RuntimeError(f"JSON-RPC error {rr.error.get('code')}: {rr.error.get('message')}")
+    if not isinstance(rr.result, dict):
+        raise RuntimeError(f"no result (HTTP {rr.http.status})")
+    return rr.result
 
 
 def _extract_state(task: dict) -> tuple[str, Optional[str]]:
     """Pull (state, message) out of a task object in either binding shape."""
     if not isinstance(task, dict):
         return "UNSPECIFIED", None
+    kind, inner = wire.unwrap(task)
+    if kind in ("task", "statusUpdate") and isinstance(inner, dict):
+        task = inner
     status = task.get("status")
     if isinstance(status, dict):
         state = status.get("state", "UNSPECIFIED")

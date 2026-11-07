@@ -124,9 +124,11 @@ class TestValidate(unittest.TestCase):
     def test_broken_card_errors(self):
         diags = validate_card(load("card_broken.json"))
         codes = [d.code for d in diags if d.severity == "error"]
-        for expected in ("E101", "E104", "E105", "E106", "E107", "E108",
+        for expected in ("E101", "E104", "E105", "E107", "E108",
                          "E110", "E111", "E113"):
             self.assertIn(expected, codes, f"missing {expected}: {format_diagnostics(diags)}")
+        # spec 5.8 allows custom bindings, so an unknown one is a warning, not an error
+        self.assertIn("W212", [d.code for d in diags])
 
     def test_non_object_card(self):
         diags = validate_card([1, 2, 3])

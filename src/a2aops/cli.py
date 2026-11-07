@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.parse
 
 from . import __version__
 from . import authcheck as auth_mod
@@ -81,7 +82,24 @@ def cmd_card_check(args) -> int:
             banner.append("note: v1.0 path 404'd; fell back to legacy /.well-known/agent.json")
     else:
         banner.append(f"read {'stdin' if args.base == '-' else args.base}")
-    return _emit(args, check_card(card), command="card-check", label=label,
+    from . import cardsec
+    from .card import INFO, WARNING, Diagnostic
+    local = False
+    if info is not None:
+        host = urllib.parse.urlparse(info.resolved_url).hostname or ""
+        local = cardsec.classify_host(host.lower()) != "public-or-name"
+    diags = check_card(card, local_origin=local)
+    if info is not None:
+        diags += cardsec.lint_origin(card, info.resolved_url)
+        if info.content_type and "json" not in info.content_type.lower():
+            diags.append(Diagnostic(WARNING, "W215", f"card served as '{info.content_type}', expected application/json", ""))
+        if not info.cache_control:
+            diags.append(Diagnostic(INFO, "I215", "no Cache-Control header on the card (spec 8.6.1 SHOULD): "
+                                    "clients and registries cannot cache it safely", ""))
+        if not info.etag:
+            diags.append(Diagnostic(INFO, "I216", "no ETag header on the card (spec 8.6.1 SHOULD): "
+                                    "clients cannot revalidate cheaply", ""))
+    return _emit(args, diags, command="card-check", label=label,
                  text=text, banner=banner)
 
 
@@ -99,6 +117,74 @@ def cmd_card_diff(args) -> int:
                  banner=[f"diff {'stdin' if args.old == '-' else args.old} -> "
                          f"{'stdin' if args.new == '-' else args.new}"],
                  ok_text="OK: no breaking or notable changes detected.")
+
+
+def cmd_card_verify(args) -> int:
+    from . import cardsig, jws
+    try:
+        card, info, label, text = _load(args, args.base)
+    except CardFetchError as e:
+        return _err(e)
+    keys: list[dict] = []
+    for src in args.jwks or []:
+        try:
+            if src.startswith(("http://", "https://")):
+                doc = cardsig._fetch_jwks(src, args.timeout)
+            else:
+                with open(src, "rb") as f:
+                    doc = json.loads(f.read(1 << 20).decode("utf-8-sig"))
+            keys += jws.load_jwks(doc)
+        except (OSError, ValueError, jws.JwsError) as e:
+            return _err(f"cannot load keys from {src}: {e}")
+        except Exception as e:  # noqa: BLE001 - UnsafeURL and friends
+            return _err(f"cannot load keys from {src}: {e}")
+    host = urllib.parse.urlparse(info.resolved_url).hostname if info is not None else None
+    diags = cardsig.verify_card(card, keys, card_host=host, trust_jku=args.trust_jku,
+                                timeout=args.timeout)
+    if not keys and not args.trust_jku:
+        from .card import Diagnostic
+        diags.append(Diagnostic(
+            "warning", "G905", "no trusted keys supplied (use --jwks FILE|URL); nothing can verify", ""))
+    return _emit(args, diags, command="card-verify", label=label, text=text,
+                 banner=[f"verify signatures of {'stdin' if args.base == '-' else args.base}"],
+                 ok_text="OK")
+
+
+def _parse_headers(items) -> dict:
+    out: dict = {}
+    for item in items or []:
+        name, sep, value = item.partition(":")
+        name, value = name.strip(), value.strip()
+        if not sep or not name or not all(c.isalnum() or c in "-_" for c in name) \
+                or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError(f"bad --header {name or item!r}: expected 'Name: value' without control characters")
+        out[name] = value
+    return out
+
+
+def cmd_conformance(args) -> int:
+    from . import conformance as conf
+    try:
+        headers = _parse_headers(args.header)
+    except ValueError as e:
+        return _err(e)
+    bindings = set(args.binding) if args.binding else None
+    ctx, results = conf.run(args.url, active=args.active, timeout=args.timeout, headers=headers,
+                            card_path=args.card_path, bindings=bindings,
+                            only_ids=set(args.only) if args.only else None)
+    if ctx.card_http is not None and ctx.card_http.error:
+        return _err(f"cannot reach {ctx.card_url}: {ctx.card_http.error}")
+    fmt = args.format
+    if fmt == "json":
+        print(conf.to_json(results, args.url, args.active))
+    elif fmt == "junit":
+        print(conf.to_junit(results, args.url))
+    elif fmt == "sarif":
+        print(report_mod.to_sarif(conf.to_diagnostics(results), command="conformance",
+                                  artifact_uri=ctx.card_url or args.url, source_text=None))
+    else:
+        print(conf.to_text(results, args.url, args.active))
+    return 1 if conf.failed(results, args.strict) else 0
 
 
 def cmd_card_fetch(args) -> int:
@@ -143,7 +229,11 @@ def cmd_auth(args) -> int:
 
 
 def cmd_task_poll(args) -> int:
-    binding = tasks_mod.rest_get_task if args.binding == "rest" else tasks_mod.jsonrpc_get_task
+    if args.binding == "rest":
+        binding = tasks_mod.rest_get_task
+    else:
+        legacy = getattr(args, "legacy", False)
+        binding = lambda b, t: tasks_mod.jsonrpc_get_task(b, t, legacy=legacy)  # noqa: E731
 
     def on_obs(obs):
         print(clean(f"{obs.task_id}: {obs.state}" + (f" — {obs.message}" if obs.message else "")))
@@ -181,7 +271,7 @@ def cmd_stream(args) -> int:
     stats = sse_mod.stream_with_resubscribe(
         args.base, args.task_id, binding=args.binding,
         on_event=on_event, max_events=args.max_events,
-        max_reconnects=args.max_reconnects)
+        max_reconnects=args.max_reconnects, legacy=getattr(args, "legacy", False))
     print("---")
     print(f"events={stats.events} duplicates_skipped={stats.duplicates} "
           f"reconnects={stats.reconnects} closed_on_terminal={stats.closed_on_terminal}")
@@ -243,6 +333,15 @@ def build_parser() -> argparse.ArgumentParser:
     cf.add_argument("base")
     fetch_opts(cf)
     cf.set_defaults(func=cmd_card_fetch)
+    cv = csub.add_parser("verify", help="verify the card's JWS signatures against keys you trust")
+    cv.add_argument("base", metavar="source", help=src_help)
+    cv.add_argument("--jwks", action="append", metavar="FILE|URL",
+                    help="trusted public key(s): a JWK Set or single JWK (repeatable)")
+    cv.add_argument("--trust-jku", action="store_true",
+                    help="also fetch the signature's jku, only if it is on the card's own host (SSRF-guarded)")
+    fetch_opts(cv)
+    out_opts(cv)
+    cv.set_defaults(func=cmd_card_verify)
     cd = csub.add_parser("diff", help="report breaking changes between two cards")
     cd.add_argument("old", help="the card clients use today (" + src_help + ")")
     cd.add_argument("new", help="the proposed card")
@@ -275,6 +374,8 @@ def build_parser() -> argparse.ArgumentParser:
     tp.add_argument("--binding", choices=["rest", "jsonrpc"], default="rest")
     tp.add_argument("--interval", type=float, default=2.0)
     tp.add_argument("--timeout", type=float, default=300.0)
+    tp.add_argument("--legacy", action="store_true",
+                    help="speak the pre-1.0 (0.3) JSON-RPC dialect (tasks/get)")
     tp.set_defaults(func=cmd_task_poll)
     ti = tsub.add_parser("inspect", help="inspect a JSONL event log")
     ti.add_argument(
@@ -291,7 +392,24 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("--max-events", type=int, default=0,
                     help="stop after N events (0 = unlimited)")
     st.add_argument("--max-reconnects", type=int, default=10)
+    st.add_argument("--legacy", action="store_true",
+                    help="speak the pre-1.0 (0.3) wire dialect: tasks/resubscribe, /v1/ REST path")
     st.set_defaults(func=cmd_stream)
+
+    cf2 = sub.add_parser("conformance", help="live A2A v1.0 protocol checks against an agent URL")
+    cf2.add_argument("url", help="agent base URL (its card is read from /.well-known/agent-card.json)")
+    cf2.add_argument("--active", action="store_true",
+                     help="also run probes that create a task (sends one harmless text message)")
+    cf2.add_argument("--format", choices=["text", "json", "junit", "sarif"], default="text")
+    cf2.add_argument("--strict", action="store_true", help="SHOULD-level failures (warnings) also fail")
+    cf2.add_argument("--header", action="append", metavar="'Name: value'",
+                     help="extra request header, e.g. Authorization (sent only to the card's own host; never printed)")
+    cf2.add_argument("--binding", action="append", choices=["jsonrpc", "rest"],
+                     help="test only this binding (repeatable; default: all offered)")
+    cf2.add_argument("--only", action="append", metavar="ID", help="run only this check id (repeatable)")
+    cf2.add_argument("--timeout", type=float, default=10.0)
+    cf2.add_argument("--card-path", default=None, metavar="PATH")
+    cf2.set_defaults(func=cmd_conformance)
 
     pl = sub.add_parser("play", help="local multi-agent playground")
     plsub = pl.add_subparsers(dest="play_cmd", required=True)

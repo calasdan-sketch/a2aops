@@ -15,10 +15,13 @@ from __future__ import annotations
 import json
 import random
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Optional
 
+from . import wire
 from .net import USER_AGENT
 from .states import is_terminal, normalize_state
 
@@ -131,9 +134,9 @@ def _line_iter(resp) -> Iterator[str]:
 
 def open_sse(url: str, headers: Optional[dict] = None,
              data: Optional[bytes] = None,
-             timeout: float = 60.0):
+             timeout: float = 60.0, method: Optional[str] = None):
     """Open an SSE HTTP request and return the response object."""
-    req = urllib.request.Request(url, data=data, headers={
+    req = urllib.request.Request(url, data=data, method=method, headers={
         "Accept": "text/event-stream",
         "Cache-Control": "no-cache",
         "User-Agent": USER_AGENT,
@@ -144,23 +147,75 @@ def open_sse(url: str, headers: Optional[dict] = None,
 
 def build_resubscribe_request(base_url: str, task_id: str,
                               binding: str = "rest",
-                              history_length: int = 0) -> tuple[str, Optional[bytes], dict]:
+                              history_length: int = 0,
+                              legacy: bool = False,
+                              rest_verb: str = "GET") -> tuple[str, Optional[bytes], dict]:
     """Build the HTTP request for the A2A resubscribe path.
 
-    Returns (url, body, headers). ``binding`` is "rest"
-    (``POST /v1/tasks/{id}:subscribe``) or "jsonrpc" (``tasks/resubscribe``).
+    Returns ``(url, body, headers)``. ``binding`` is ``"rest"`` or
+    ``"jsonrpc"``. For v1.0 (spec 5.3, 9.4.6, 11.3.2) that is
+    ``SubscribeToTask`` / ``{interface}/tasks/{id}:subscribe`` plus the
+    ``A2A-Version`` header. The spec text says ``POST`` for REST but
+    ``a2a.proto`` says ``GET``; ``rest_verb`` picks (``stream_with_resubscribe``
+    tries GET and falls back to POST on HTTP 405/404). ``legacy=True`` speaks
+    the pre-1.0 dialect (``tasks/resubscribe``, ``POST /v1/tasks/{id}:subscribe``).
     """
     base = base_url.rstrip("/")
+    quoted = urllib.parse.quote(task_id, safe="")
     if binding == "rest":
-        url = f"{base}/v1/tasks/{task_id}:subscribe"
-        body = json.dumps({"id": task_id, "historyLength": history_length}).encode()
-        return url, body, {"Content-Type": "application/json"}
+        if legacy:
+            return (f"{base}/v1/tasks/{quoted}:subscribe",
+                    json.dumps({"id": task_id, "historyLength": history_length}).encode(),
+                    {"Content-Type": "application/json"})
+        h = {"A2A-Version": wire.A2A_VERSION}
+        if rest_verb == "POST":
+            h["Content-Type"] = "application/a2a+json"
+            return f"{base}/tasks/{quoted}:subscribe", b"{}", h
+        return f"{base}/tasks/{quoted}:subscribe", None, h
     if binding == "jsonrpc":
         payload = {"jsonrpc": "2.0", "id": f"a2aops-{int(time.time())}",
-                   "method": "tasks/resubscribe",
-                   "params": {"id": task_id, "historyLength": history_length}}
-        return base, json.dumps(payload).encode(), {"Content-Type": "application/json"}
+                   "method": wire.jsonrpc_method(wire.M_SUBSCRIBE, legacy),
+                   "params": {"id": task_id}}
+        if legacy:
+            payload["params"]["historyLength"] = history_length
+        h = {"Content-Type": "application/json"}
+        if not legacy:
+            h["A2A-Version"] = wire.A2A_VERSION
+        return base, json.dumps(payload).encode(), h
     raise ValueError(f"unknown binding '{binding}' (expected 'rest' or 'jsonrpc')")
+
+
+def _handle_non_stream(resp, base_url: str, task_id: str, binding: str,
+                       legacy: bool, stats: "StreamStats") -> None:
+    try:
+        with resp:
+            body = json.loads(resp.read(1 << 20).decode("utf-8-sig"))
+    except Exception as e:  # noqa: BLE001
+        stats.notes.append(f"server answered with a non-stream body that is not JSON ({e}); not retrying")
+        return
+    err = body.get("error") if isinstance(body, dict) else None
+    code = err.get("code") if isinstance(err, dict) else None
+    reason = wire.error_reason(err, rest=binding == "rest")
+    msg = err.get("message") if isinstance(err, dict) else None
+    if code in (-32004, 400) or reason == "UNSUPPORTED_OPERATION":
+        # most likely "task already final": read its state once instead
+        try:
+            if binding == "jsonrpc":
+                rr = wire.jsonrpc_call(base_url, wire.M_GET, {"id": task_id}, legacy=legacy,
+                                       version=None if legacy else wire.A2A_VERSION, timeout=10)
+                task = rr.result
+            else:
+                rs = wire.rest_call(base_url, "GET", wire.rest_path(wire.M_GET, task_id)[1])
+                task = rs.body
+            state = wire.state_of(task)
+        except Exception:  # noqa: BLE001
+            state = None
+        if state:
+            norm = normalize_state(state)
+            stats.notes.append(f"cannot subscribe ({msg}); task is already {norm.name}")
+            stats.closed_on_terminal = is_terminal(norm.name)
+            return
+    stats.notes.append(f"server refused the subscription: {msg or body!r}")
 
 
 @dataclass
@@ -185,6 +240,7 @@ def stream_with_resubscribe(
     history_length: int = 0,
     opener: Optional[Callable] = None,
     sleep: Callable[[float], None] = time.sleep,
+    legacy: bool = False,
 ) -> StreamStats:
     """Stream task events, resubscribing with backoff on disconnect.
 
@@ -208,18 +264,32 @@ def stream_with_resubscribe(
             payload = json.loads(ev.data)
         except (json.JSONDecodeError, ValueError):
             return None
-        # TaskStatusUpdateEvent: {"taskId":..., "status": {"state": ...}, "final": bool}
-        status = payload.get("status") if isinstance(payload, dict) else None
-        state = status.get("state") if isinstance(status, dict) else None
-        if state is None and isinstance(payload, dict):
-            state = payload.get("state")  # tolerate flat shapes
-        return state if isinstance(state, str) else None
+        if isinstance(payload, dict) and isinstance(payload.get("result"), dict):
+            payload = payload["result"]      # JSON-RPC envelope
+        # v1.0 StreamResponse wrappers ({"statusUpdate": ...}, {"task": ...})
+        # and the pre-1.0 flat TaskStatusUpdateEvent are both understood.
+        return wire.state_of(payload)
 
+    rest_verb = "GET"
     while True:
-        url, body, headers = build_resubscribe_request(base_url, task_id, binding, history_length)
+        url, body, headers = build_resubscribe_request(base_url, task_id, binding, history_length,
+                                                       legacy=legacy, rest_verb=rest_verb)
         try:
-            resp = opener(url, headers=headers, data=body, timeout=60.0)
+            resp = opener(url, headers=headers, data=body, timeout=60.0,
+                          **({"method": rest_verb} if (binding == "rest" and not legacy
+                                                       and opener is open_sse) else {}))
         except Exception as e:
+            code = getattr(e, "code", None)
+            if binding == "rest" and not legacy and rest_verb == "GET" and code in (404, 405):
+                # a2a.proto says GET, the spec prose says POST: try the other once
+                rest_verb = "POST"
+                stats.notes.append(f"GET :subscribe returned HTTP {code}; trying POST (spec text vs proto differ)")
+                continue
+            if (isinstance(e, urllib.error.HTTPError) and 400 <= e.code < 500
+                    and e.code not in (408, 429)):
+                # a definite client-side answer (task final / unknown): never retry it
+                _handle_non_stream(e, base_url, task_id, binding, legacy, stats)
+                return stats
             reconnects += 1
             stats.reconnects = reconnects
             if reconnects > max_reconnects:
@@ -229,6 +299,14 @@ def stream_with_resubscribe(
             stats.notes.append(f"connect failed ({e}); retry {reconnects} in {delay:.1f}s")
             sleep(delay)
             continue
+
+        hdrs = getattr(resp, "headers", None)
+        ctype = hdrs.get("Content-Type", "") if hdrs is not None and hasattr(hdrs, "get") else ""
+        if ctype and "text/event-stream" not in ctype.lower():
+            # A JSON body instead of a stream is an A2A error (spec 9.4.6: subscribing
+            # to a final task is UnsupportedOperationError) - never a reason to loop.
+            _handle_non_stream(resp, base_url, task_id, binding, legacy, stats)
+            return stats
 
         stream_broken = False
         callback_failed = False
@@ -261,6 +339,10 @@ def stream_with_resubscribe(
                         if is_terminal(norm.name):
                             stats.closed_on_terminal = True
                             stats.notes.append(f"stream closed: task reached terminal state {norm.name}")
+                            return stats
+                        if norm.name in ("INPUT_REQUIRED", "AUTH_REQUIRED"):
+                            stats.notes.append(
+                                f"stream ends: task is {norm.name} (interrupted; send a new message to continue)")
                             return stats
         except Exception as e:
             if callback_failed:

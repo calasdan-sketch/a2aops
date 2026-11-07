@@ -86,15 +86,29 @@ def ev_text(eid, state):
 
 class TestResubscribe(unittest.TestCase):
     def test_build_requests(self):
+        # v1.0 (spec 5.3 / 11.3.2): no /v1 prefix, A2A-Version header
         url, body, headers = build_resubscribe_request("https://x.example", "t9", "rest")
-        self.assertEqual(url, "https://x.example/v1/tasks/t9:subscribe")
-        self.assertIn(b"t9", body)
+        self.assertEqual(url, "https://x.example/tasks/t9:subscribe")
+        self.assertIsNone(body)
+        self.assertEqual(headers["A2A-Version"], "1.0")
+        url, body, headers = build_resubscribe_request("https://x.example", "t9", "rest",
+                                                       rest_verb="POST")
+        self.assertEqual(url, "https://x.example/tasks/t9:subscribe")
 
         url, body, headers = build_resubscribe_request("https://x.example/rpc", "t9", "jsonrpc")
         import json
         payload = json.loads(body)
-        self.assertEqual(payload["method"], "tasks/resubscribe")
+        self.assertEqual(payload["method"], "SubscribeToTask")
+        self.assertEqual(headers["A2A-Version"], "1.0")
         self.assertEqual(headers["Content-Type"], "application/json")
+
+        # pre-1.0 dialect stays available behind legacy=True
+        url, body, headers = build_resubscribe_request("https://x.example", "t9", "rest", legacy=True)
+        self.assertEqual(url, "https://x.example/v1/tasks/t9:subscribe")
+        self.assertIn(b"t9", body)
+        _, body, headers = build_resubscribe_request("https://x.example/rpc", "t9", "jsonrpc", legacy=True)
+        self.assertEqual(json.loads(body)["method"], "tasks/resubscribe")
+        self.assertNotIn("A2A-Version", headers)
 
         with self.assertRaises(ValueError):
             build_resubscribe_request("https://x.example", "t9", "smoke")

@@ -1,0 +1,324 @@
+{
+ "ES256": {
+  "card": {
+   "capabilities": {
+    "extendedAgentCard": true,
+    "pushNotifications": true,
+    "streaming": true
+   },
+   "defaultInputModes": [
+    "text/plain",
+    "application/json"
+   ],
+   "defaultOutputModes": [
+    "application/json"
+   ],
+   "description": "Searches and books hotel rooms for a traveller, with budget filtering.",
+   "documentationUrl": "https://example.com/docs",
+   "name": "Hotel Booking Agent",
+   "provider": {
+    "organization": "Example Travel",
+    "url": "https://example.com"
+   },
+   "securityRequirements": [
+    {
+     "schemes": {
+      "oidc": {
+       "list": [
+        "bookings:write"
+       ]
+      }
+     }
+    }
+   ],
+   "securitySchemes": {
+    "oidc": {
+     "openIdConnectSecurityScheme": {
+      "openIdConnectUrl": "https://login.example.com/.well-known/openid-configuration"
+     }
+    }
+   },
+   "skills": [
+    {
+     "description": "Finds rooms matching dates, city and budget, then books on confirmation.",
+     "examples": [
+      "Two nights in Munich from 12 March under 200 EUR per night"
+     ],
+     "id": "search-and-book",
+     "name": "Search and book a hotel",
+     "tags": [
+      "travel",
+      "hotel"
+     ]
+    }
+   ],
+   "supportedInterfaces": [
+    {
+     "protocolBinding": "JSONRPC",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/v1"
+    },
+    {
+     "protocolBinding": "HTTP+JSON",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/json"
+    }
+   ],
+   "version": "2.3.0",
+   "signatures": [
+    {
+     "protected": "eyJhbGciOiJFUzI1NiIsImprdSI6Imh0dHBzOi8vZXhhbXBsZS5jb20vandrcy5qc29uIiwia2lkIjoidGVzdC1rZXktMSIsInR5cCI6IkpPU0UifQ",
+     "signature": "wcpc8ztLkNQQZN3T9XLQQXPYY2xcFF0ZdipjkcZRKzG7vRo2NkyIhmKSqokZu0O5W_iMcLjcBL-waNVFvF57kA"
+    }
+   ]
+  },
+  "jwk": {
+   "kty": "EC",
+   "crv": "P-256",
+   "x": "f2buppZ1-L-eOqH8ua9FzAPYCj3pzIxgf99aEYxVxMM",
+   "y": "IA96vJuYeu4lrXsE0GMDCpNhy-rqFDH1Ae_FDZgOUCU",
+   "kid": "test-key-1"
+  }
+ },
+ "ES256-empty-capabilities": {
+  "card": {
+   "capabilities": {},
+   "defaultInputModes": [
+    "text/plain",
+    "application/json"
+   ],
+   "defaultOutputModes": [
+    "application/json"
+   ],
+   "description": "Searches and books hotel rooms for a traveller, with budget filtering.",
+   "documentationUrl": "https://example.com/docs",
+   "name": "Hotel Booking Agent",
+   "provider": {
+    "organization": "Example Travel",
+    "url": "https://example.com"
+   },
+   "securityRequirements": [
+    {
+     "schemes": {
+      "oidc": {
+       "list": [
+        "bookings:write"
+       ]
+      }
+     }
+    }
+   ],
+   "securitySchemes": {
+    "oidc": {
+     "openIdConnectSecurityScheme": {
+      "openIdConnectUrl": "https://login.example.com/.well-known/openid-configuration"
+     }
+    }
+   },
+   "skills": [
+    {
+     "description": "Finds rooms matching dates, city and budget, then books on confirmation.",
+     "examples": [
+      "Two nights in Munich from 12 March under 200 EUR per night"
+     ],
+     "id": "search-and-book",
+     "name": "Search and book a hotel",
+     "tags": [
+      "travel",
+      "hotel"
+     ]
+    }
+   ],
+   "supportedInterfaces": [
+    {
+     "protocolBinding": "JSONRPC",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/v1"
+    },
+    {
+     "protocolBinding": "HTTP+JSON",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/json"
+    }
+   ],
+   "version": "2.3.0",
+   "signatures": [
+    {
+     "protected": "eyJhbGciOiJFUzI1NiIsImtpZCI6InRlc3Qta2V5LTEiLCJ0eXAiOiJKT1NFIn0",
+     "signature": "W1rrD5TnXgkH-AM8rvB-V4K_Ie4B1dtkowB5A6FFVlJMlULVQt_f10IguioaudjFPqRrCOovSeLjcKWCX5Nu1A"
+    }
+   ]
+  },
+  "jwk": {
+   "kty": "EC",
+   "crv": "P-256",
+   "x": "f2buppZ1-L-eOqH8ua9FzAPYCj3pzIxgf99aEYxVxMM",
+   "y": "IA96vJuYeu4lrXsE0GMDCpNhy-rqFDH1Ae_FDZgOUCU",
+   "kid": "test-key-1"
+  }
+ },
+ "ES384": {
+  "card": {
+   "capabilities": {
+    "extendedAgentCard": true,
+    "pushNotifications": true,
+    "streaming": true
+   },
+   "defaultInputModes": [
+    "text/plain",
+    "application/json"
+   ],
+   "defaultOutputModes": [
+    "application/json"
+   ],
+   "description": "Searches and books hotel rooms for a traveller, with budget filtering.",
+   "documentationUrl": "https://example.com/docs",
+   "name": "Hotel Booking Agent",
+   "provider": {
+    "organization": "Example Travel",
+    "url": "https://example.com"
+   },
+   "securityRequirements": [
+    {
+     "schemes": {
+      "oidc": {
+       "list": [
+        "bookings:write"
+       ]
+      }
+     }
+    }
+   ],
+   "securitySchemes": {
+    "oidc": {
+     "openIdConnectSecurityScheme": {
+      "openIdConnectUrl": "https://login.example.com/.well-known/openid-configuration"
+     }
+    }
+   },
+   "skills": [
+    {
+     "description": "Finds rooms matching dates, city and budget, then books on confirmation.",
+     "examples": [
+      "Two nights in Munich from 12 March under 200 EUR per night"
+     ],
+     "id": "search-and-book",
+     "name": "Search and book a hotel",
+     "tags": [
+      "travel",
+      "hotel"
+     ]
+    }
+   ],
+   "supportedInterfaces": [
+    {
+     "protocolBinding": "JSONRPC",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/v1"
+    },
+    {
+     "protocolBinding": "HTTP+JSON",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/json"
+    }
+   ],
+   "version": "2.3.0",
+   "signatures": [
+    {
+     "protected": "eyJhbGciOiJFUzM4NCIsImprdSI6Imh0dHBzOi8vZXhhbXBsZS5jb20vandrcy5qc29uIiwia2lkIjoidGVzdC1rZXktMSIsInR5cCI6IkpPU0UifQ",
+     "signature": "fIGbqwhglk5aPjG4XB43qM_emKMoGj9Xt_cmoupTgT8VBpNlzamiBF7GY-y7RMBvYMpiEt9nagq00GKXCbI3KNbs84Oo9QwIGuu34OEnEbgImZ9Ti-oWhUTu1pbJV86j"
+    }
+   ]
+  },
+  "jwk": {
+   "kty": "EC",
+   "crv": "P-384",
+   "x": "uwtcO2LtnIqwiXg-ioLjfD64Deil2_n0moBABvfdE5HFqLuFGEIOjNZnTTs158f8",
+   "y": "k9ZXnXuuKbcDGqUHM8IFI2c99CF9R_VF1vfgQELIDmVZJlkWcoxaRCBr_m2vX81e",
+   "kid": "test-key-1"
+  }
+ },
+ "RS256": {
+  "card": {
+   "capabilities": {
+    "extendedAgentCard": true,
+    "pushNotifications": true,
+    "streaming": true
+   },
+   "defaultInputModes": [
+    "text/plain",
+    "application/json"
+   ],
+   "defaultOutputModes": [
+    "application/json"
+   ],
+   "description": "Searches and books hotel rooms for a traveller, with budget filtering.",
+   "documentationUrl": "https://example.com/docs",
+   "name": "Hotel Booking Agent",
+   "provider": {
+    "organization": "Example Travel",
+    "url": "https://example.com"
+   },
+   "securityRequirements": [
+    {
+     "schemes": {
+      "oidc": {
+       "list": [
+        "bookings:write"
+       ]
+      }
+     }
+    }
+   ],
+   "securitySchemes": {
+    "oidc": {
+     "openIdConnectSecurityScheme": {
+      "openIdConnectUrl": "https://login.example.com/.well-known/openid-configuration"
+     }
+    }
+   },
+   "skills": [
+    {
+     "description": "Finds rooms matching dates, city and budget, then books on confirmation.",
+     "examples": [
+      "Two nights in Munich from 12 March under 200 EUR per night"
+     ],
+     "id": "search-and-book",
+     "name": "Search and book a hotel",
+     "tags": [
+      "travel",
+      "hotel"
+     ]
+    }
+   ],
+   "supportedInterfaces": [
+    {
+     "protocolBinding": "JSONRPC",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/v1"
+    },
+    {
+     "protocolBinding": "HTTP+JSON",
+     "protocolVersion": "1.0",
+     "url": "https://hotels.example.com/a2a/json"
+    }
+   ],
+   "version": "2.3.0",
+   "signatures": [
+    {
+     "protected": "eyJhbGciOiJSUzI1NiIsImprdSI6Imh0dHBzOi8vZXhhbXBsZS5jb20vandrcy5qc29uIiwia2lkIjoidGVzdC1rZXktMSIsInR5cCI6IkpPU0UifQ",
+     "signature": "aIYsPegtUA13fxswxiQij63bCsgQo90QttAEVNkV7HEe_a78LuZz4CTzkiG9RTGvFAzqmeZB476GkSTCm21ZDxk2EpO8mkkdAvIgFfIhSjpg-6nz_w-nGkbQFO47YRMO8lOZDmNaopgqRHZOvi2rS6WHs2Kme7tXSCHIWy4oS3fBrrXCLTb4ZOVW6bGeYuKg4uhGFNv0k4l90i2bLHCsUTI0ju4q8Y1U1nfjRoGx1floUx-Pg-eKasP3z3K9OJjhqw_OaZpOlL4QhoAgHnfCV7IxuA6Jb89smFb48DJgWakWdzpvUqi-4w8glCTOKMRe17ZcDOHHtcmult5bZVKv-Q"
+    }
+   ]
+  },
+  "jwk": {
+   "kty": "RSA",
+   "key_ops": [
+    "verify"
+   ],
+   "n": "5NNhIsolxERT70l5MzooMCJsVpwvd-zh60hk2sa3xOn-FaxBsF_tXP8S2gOkURPf4SyXZl8vbUp2PqsE9xhgHDxTwE7SZ64rSsY52uqEpdVDxOEdJUfQvYKIb-VHnGAMKV4OWpXAlIrVpyUONXUGDjSGfNxy5oi8Y2EFxAjAwOnyylIag2ZtIr-ccyw--ThZeM8T65ZWH64Ab8iR6mcu5YWh1J4RQ4OgJQ4QrkfGFsr3f6l16M6Td69zs6rlsD5TpTbx8dIqWJ1Vs-Ish0uoZSnPiqwObd-45klMXNBvQGeUdf_kJOdvb9UXXYUWaMY0yuZPiX8UXRW67UFoaXgBHQ",
+   "e": "AQAB",
+   "kid": "test-key-1"
+  }
+ }
+}

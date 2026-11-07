@@ -74,17 +74,38 @@ class TestMockAgent(unittest.TestCase):
         self.assertEqual(cancelled["result"]["status"]["state"], "TASK_STATE_CANCELED")
 
     def test_stream_closes_on_terminal(self):
-        # create a completed task, then resubscribe-stream it
-        resp = rpc(self.agent.base_url + "/", "message/send",
-                   {"message": {"messageId": "m1", "role": "user",
-                                "parts": [{"text": "hello"}]}})
-        task_id = resp["result"]["id"]
+        # v1.0: SendMessage a slow task, SubscribeToTask streams it to COMPLETED
+        resp = rpc(self.agent.base_url + "/", "SendMessage",
+                   {"message": {"messageId": "m1", "role": "ROLE_USER",
+                                "parts": [{"text": "slow please"}]}})
+        task_id = resp["result"]["task"]["id"]
         seen = []
         stats = stream_with_resubscribe(self.agent.base_url, task_id, binding="jsonrpc",
                                         on_event=seen.append, sleep=lambda s: None,
                                         max_reconnects=2)
+        self.assertTrue(stats.closed_on_terminal, stats.notes)
+        self.assertGreaterEqual(stats.events, 2)
+
+    def test_stream_closes_on_terminal_legacy_dialect(self):
+        resp = rpc(self.agent.base_url + "/", "message/send",
+                   {"message": {"messageId": "m1", "role": "user",
+                                "parts": [{"text": "hello"}]}})
+        task_id = resp["result"]["id"]
+        stats = stream_with_resubscribe(self.agent.base_url, task_id, binding="jsonrpc",
+                                        legacy=True, sleep=lambda s: None, max_reconnects=2)
         self.assertTrue(stats.closed_on_terminal)
-        self.assertGreaterEqual(stats.events, 1)
+
+    def test_subscribing_to_a_final_task_reports_state_instead_of_looping(self):
+        resp = rpc(self.agent.base_url + "/", "SendMessage",
+                   {"message": {"messageId": "m2", "role": "ROLE_USER",
+                                "parts": [{"text": "hello"}]}})
+        task_id = resp["result"]["task"]["id"]
+        for binding, base in (("jsonrpc", self.agent.base_url), ("rest", self.agent.base_url)):
+            stats = stream_with_resubscribe(base, task_id, binding=binding,
+                                            sleep=lambda s: None, max_reconnects=2)
+            self.assertEqual(stats.reconnects, 0, (binding, stats.notes))
+            self.assertTrue(stats.closed_on_terminal, (binding, stats.notes))
+            self.assertTrue(any("already COMPLETED" in n for n in stats.notes))
 
     def test_message_stream_replays_transitions(self):
         """The fixture must stream real transitions, not just the final state."""

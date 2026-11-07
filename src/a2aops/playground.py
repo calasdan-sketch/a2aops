@@ -5,10 +5,15 @@ them, producing a timestamped JSONL wire log.
 
 Honesty note (panel decision D7): mock agents are **wire-correct scripted
 fixtures**, not simulations of real agent intelligence. Every wire behavior
-below traces to an A2A v1.0 clause: AgentCard serving, ``message/send``,
-``message/stream`` (SSE, closed on terminal states), ``tasks/get``,
-``tasks/resubscribe`` (JSON-RPC) and ``POST /v1/tasks/{id}:subscribe``
-(REST), both duplicate-tolerant, and ``tasks/cancel``. Use this to test
+below traces to an A2A v1.0 clause: AgentCard serving (with ``Cache-Control``
+and ``ETag``), JSON-RPC ``SendMessage`` / ``SendStreamingMessage`` /
+``GetTask`` / ``ListTasks`` / ``CancelTask`` / ``SubscribeToTask`` and the REST
+routes ``/message:send``, ``/message:stream``, ``/tasks/{id}``,
+``/tasks/{id}:cancel``, ``/tasks/{id}:subscribe`` (streams close on terminal or
+interrupted states; subscribing to a final task is an error, spec 9.4.6), with
+spec-shaped errors (``ErrorInfo`` reason/domain). The pre-1.0 names
+(``message/send``, ``tasks/get``, ``tasks/resubscribe``, ``/v1/...``) are still
+served so old client code can be tested. Use this to test
 *your client code* against the protocol surface — not to predict what a
 real agent will say.
 """
@@ -20,10 +25,12 @@ import http.server
 import json
 import threading
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from . import wire
 from .spec import load_spec
 
 
@@ -31,6 +38,7 @@ JSONRPC = "JSONRPC"
 # Wire values the fixture emits are derived from the pinned spec snapshot,
 # so a snapshot update flows through here too.
 _TERMINAL_STATES = frozenset("TASK_STATE_" + s for s in load_spec()["terminal_states"])
+_INTERRUPTED_STATES = frozenset(("TASK_STATE_INPUT_REQUIRED", "TASK_STATE_AUTH_REQUIRED"))
 
 
 # --------------------------------------------------------------------------
@@ -42,7 +50,11 @@ class MockAgent:
 
     def __init__(self, name: str, skills: Optional[list[dict]] = None,
                  description: str = "", port: int = 0,
-                 streaming: bool = True) -> None:
+                 streaming: bool = True, legacy: bool = True) -> None:
+        # legacy=False makes the fixture a strict v1.0 agent (pre-1.0 method
+        # names and /v1/ routes answer "Method not found" / 404); it is the
+        # reference agent of the conformance benchmark.
+        self.legacy = legacy
         self.name = name
         self.description = description or f"Mock agent '{name}' (a2aops playground fixture)"
         self.skills = skills or [{"id": "echo", "name": "Echo",
@@ -67,11 +79,10 @@ class MockAgent:
             "name": self.name,
             "description": self.description,
             "version": "0.1.0-fixture",
-            "supportedInterfaces": [{
-                "url": self.base_url + "/",
-                "protocolBinding": JSONRPC,
-                "protocolVersion": "1.0",
-            }],
+            "supportedInterfaces": [
+                {"url": self.base_url + "/", "protocolBinding": JSONRPC, "protocolVersion": "1.0"},
+                {"url": self.base_url, "protocolBinding": "HTTP+JSON", "protocolVersion": "1.0"},
+            ],
             "capabilities": {"streaming": self.streaming,
                              "pushNotifications": False,
                              "extendedAgentCard": False},
@@ -91,46 +102,184 @@ class MockAgent:
             def log_message(self, *args):  # keep test output clean
                 pass
 
+            # -- helpers ---------------------------------------------------
+            def _send(self, status: int, obj: dict, ctype: str = "application/json"):
+                body = json.dumps(obj).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _rest_error(self, name: str, message: str, **meta):
+                code, http_status, reason = wire.ERRORS[name]
+                self._send(http_status, {"error": {
+                    "code": http_status,
+                    "status": "NOT_FOUND" if http_status == 404 else "FAILED_PRECONDITION",
+                    "message": message,
+                    "details": [{"@type": wire.ERRORINFO_TYPE, "reason": reason,
+                                 "domain": wire.ERRORINFO_DOMAIN, "metadata": meta}]}},
+                           "application/a2a+json")
+
+            def _rpc_error(self, rid, code: int, message: str, reason: str = ""):
+                err = {"code": code, "message": message}
+                if reason:
+                    err["data"] = [{"@type": wire.ERRORINFO_TYPE, "reason": reason,
+                                    "domain": wire.ERRORINFO_DOMAIN, "metadata": {}}]
+                self._send(200, {"jsonrpc": "2.0", "id": rid, "error": err})
+
+            def _rpc_a2a_error(self, rid, name: str, message: str):
+                code, _http, reason = wire.ERRORS[name]
+                self._rpc_error(rid, code, message, reason)
+
+            def _version_ok(self) -> bool:
+                v = self.headers.get("A2A-Version")
+                return v is None or v.strip() in ("", "1.0", "0.3")
+
+            # -- REST (v1.0) + card ---------------------------------------
             def do_GET(self):
-                if self.path == "/.well-known/agent-card.json":
+                path = self.path.split("?", 1)[0]
+                if path == "/.well-known/agent-card.json":
                     body = json.dumps(agent.card).encode()
+                    if self.headers.get("If-None-Match") == agent.card_etag:
+                        self.send_response(304)
+                        self.send_header("ETag", agent.card_etag)
+                        self.end_headers()
+                        return
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
+                    self.send_header("Cache-Control", "public, max-age=60")
+                    self.send_header("ETag", agent.card_etag)
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
-                elif self.path.startswith("/tasks/"):
-                    task_id = self.path[len("/tasks/"):]
-                    task = agent._get_task(task_id)
+                elif path != "/" and not self._version_ok():
+                    self._rest_error("VersionNotSupportedError", "A2A version not supported")
+                elif "/pushNotificationConfigs" in path:
+                    self._rest_error("PushNotificationNotSupportedError",
+                                     "push notifications are not supported")
+                elif path == "/extendedAgentCard":
+                    self._rest_error("UnsupportedOperationError",
+                                     "the fixture has no extended agent card")
+                elif path == "/tasks":
+                    self._send(200, {"tasks": [agent._view_v1(t) for t in agent._all_tasks()],
+                                     "nextPageToken": "", "pageSize": 50,
+                                     "totalSize": len(agent._all_tasks())},
+                               "application/a2a+json")
+                elif path.startswith("/tasks/") and path.endswith(":subscribe"):
+                    tid = urllib.parse.unquote(path[len("/tasks/"):-len(":subscribe")])
+                    agent._subscribe_v1(self, {"rpc": False}, tid)
+                elif path.startswith("/tasks/"):
+                    tid = urllib.parse.unquote(path[len("/tasks/"):])
+                    agent._maybe_advance(tid)
+                    task = agent._get_task(tid)
                     if task is None:
-                        self._send(404, {"error": "task not found"})
+                        self._rest_error("TaskNotFoundError", "task not found", taskId=tid)
                     else:
-                        self._send(200, agent._task_view(task))
+                        self._send(200, agent._view_v1(task), "application/a2a+json")
                 else:
                     self._send(404, {"error": "not found"})
 
             def do_POST(self):
-                # REST resubscribe path (the JSON-RPC form is handled below):
-                # POST /v1/tasks/{id}:subscribe
-                if self.path.startswith("/v1/tasks/") and self.path.endswith(":subscribe"):
-                    task_id = self.path[len("/v1/tasks/"):-len(":subscribe")]
-                    length = int(self.headers.get("Content-Length", 0) or 0)
-                    if length:
-                        self.rfile.read(length)
-                    agent._resubscribe_for(self, {"id": task_id})
-                    return
                 length = int(self.headers.get("Content-Length", 0) or 0)
-                raw = self.rfile.read(length) if length else b"{}"
+                raw = self.rfile.read(length) if length else b""
+                path = self.path.split("?", 1)[0]
+                # REST resubscribe: v1.0 POST /tasks/{id}:subscribe, legacy /v1/...
+                if path.startswith(("/v1/tasks/", "/tasks/")) and path.endswith(":subscribe"):
+                    legacy = path.startswith("/v1/")
+                    if legacy and not agent.legacy:
+                        self._send(404, {"error": "not found"})
+                        return
+                    start = len("/v1/tasks/") if legacy else len("/tasks/")
+                    tid = urllib.parse.unquote(path[start:-len(":subscribe")])
+                    if legacy:
+                        agent._resubscribe_for(self, {"id": tid})
+                    else:
+                        agent._subscribe_v1(self, {"rpc": False}, tid)
+                    return
+                if "/pushNotificationConfigs" in path and path.startswith("/tasks/"):
+                    if not self._version_ok():
+                        self._rest_error("VersionNotSupportedError", "A2A version not supported")
+                    else:
+                        self._rest_error("PushNotificationNotSupportedError",
+                                         "push notifications are not supported")
+                    return
+                if path in ("/message:send", "/message:stream") or (
+                        path.startswith("/tasks/") and path.endswith(":cancel")):
+                    self._rest_v1_post(path, raw)
+                    return
                 try:
-                    req = json.loads(raw.decode("utf-8"))
+                    req = json.loads((raw or b"{}").decode("utf-8"))
                 except (ValueError, UnicodeDecodeError):
                     self._send(400, {"jsonrpc": "2.0", "id": None,
                                      "error": {"code": -32700, "message": "Parse error"}})
                     return
+                if not isinstance(req, dict):
+                    self._send(400, {"jsonrpc": "2.0", "id": None,
+                                     "error": {"code": -32600, "message": "Invalid Request"}})
+                    return
                 method = req.get("method", "")
                 params = req.get("params") or {}
                 rid = req.get("id")
-                if method == "message/send":
+                if not isinstance(params, dict):
+                    self._rpc_error(rid, -32602, "Invalid params", "INVALID_PARAMS")
+                    return
+                # ---- v1.0 method names (spec 5.3) ----
+                if method in wire.V1_METHODS:
+                    if not self._version_ok():
+                        self._rpc_a2a_error(rid, "VersionNotSupportedError",
+                                            "A2A version not supported")
+                        return
+                    ctx = {"rpc": True, "rid": rid}
+                    if method == wire.M_SEND:
+                        if not isinstance(params.get("message"), dict):
+                            self._rpc_error(rid, -32602, "Invalid params", "INVALID_PARAMS")
+                            return
+                        self._send(200, {"jsonrpc": "2.0", "id": rid, "result": {
+                            "task": agent._view_v1(agent._handle_send_raw(params))}})
+                    elif method == wire.M_STREAM:
+                        if not isinstance(params.get("message"), dict):
+                            self._rpc_error(rid, -32602, "Invalid params", "INVALID_PARAMS")
+                            return
+                        tid = agent._handle_send_raw(params)["id"]
+                        agent._stream_v1(self, ctx, tid)
+                    elif method == wire.M_GET:
+                        tid = str(params.get("id", ""))
+                        agent._maybe_advance(tid)
+                        task = agent._get_task(tid)
+                        if task is None:
+                            self._rpc_a2a_error(rid, "TaskNotFoundError", "task not found")
+                        else:
+                            self._send(200, {"jsonrpc": "2.0", "id": rid,
+                                             "result": agent._view_v1(task)})
+                    elif method == wire.M_CANCEL:
+                        tid = str(params.get("id", ""))
+                        task = agent._get_task(tid)
+                        if task is None:
+                            self._rpc_a2a_error(rid, "TaskNotFoundError", "task not found")
+                        elif task["state"] in _TERMINAL_STATES:
+                            self._rpc_a2a_error(rid, "TaskNotCancelableError", "task is already final")
+                        else:
+                            agent._cancel(tid)
+                            self._send(200, {"jsonrpc": "2.0", "id": rid,
+                                             "result": agent._view_v1(agent._get_task(tid) or {})})
+                    elif method == wire.M_SUBSCRIBE:
+                        agent._subscribe_v1(self, ctx, str(params.get("id", "")))
+                    elif method == wire.M_LIST:
+                        tasks = agent._all_tasks()
+                        self._send(200, {"jsonrpc": "2.0", "id": rid, "result": {
+                            "tasks": [agent._view_v1(t) for t in tasks], "nextPageToken": "",
+                            "pageSize": 50, "totalSize": len(tasks)}})
+                    elif method == wire.M_EXT_CARD:
+                        self._rpc_a2a_error(rid, "UnsupportedOperationError", "no extended card")
+                    else:   # push-notification configuration is not supported by the fixture
+                        self._rpc_a2a_error(rid, "PushNotificationNotSupportedError",
+                                            "push notifications are not supported")
+                    return
+                # ---- legacy (pre-1.0) names, kept for old clients ----
+                if not agent.legacy:
+                    self._rpc_error(rid, -32601, "Method not found")
+                elif method == "message/send":
                     result = agent._handle_send(params)
                     self._send(200, {"jsonrpc": "2.0", "id": rid, "result": result})
                 elif method == "message/stream":
@@ -152,16 +301,42 @@ class MockAgent:
                     task = agent._cancel(str(params.get("id", "")))
                     self._send(200, {"jsonrpc": "2.0", "id": rid, "result": task})
                 else:
-                    self._send(200, {"jsonrpc": "2.0", "id": rid,
-                                     "error": {"code": -32601, "message": f"unknown method {method}"}})
+                    self._rpc_error(rid, -32601, "Method not found")
 
-            def _send(self, status: int, obj: dict):
-                body = json.dumps(obj).encode()
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            def _rest_v1_post(self, path: str, raw: bytes):
+                try:
+                    body = json.loads((raw or b"{}").decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    self._send(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT",
+                                               "message": "invalid JSON"}}, "application/a2a+json")
+                    return
+                if not self._version_ok():
+                    self._rest_error("VersionNotSupportedError", "A2A version not supported")
+                    return
+                if path.endswith(":cancel"):
+                    tid = urllib.parse.unquote(path[len("/tasks/"):-len(":cancel")])
+                    task = agent._get_task(tid)
+                    if task is None:
+                        self._rest_error("TaskNotFoundError", "task not found", taskId=tid)
+                    elif task["state"] in _TERMINAL_STATES:
+                        self._rest_error("TaskNotCancelableError", "task is already final", taskId=tid)
+                    else:
+                        agent._cancel(tid)
+                        self._send(200, agent._view_v1(agent._get_task(tid) or {}), "application/a2a+json")
+                    return
+                if not isinstance(body, dict) or not isinstance(body.get("message"), dict):
+                    self._send(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT",
+                                               "message": "message is required",
+                                               "details": [{"@type": wire.ERRORINFO_TYPE,
+                                                            "reason": "INVALID_REQUEST",
+                                                            "domain": wire.ERRORINFO_DOMAIN}]}},
+                               "application/a2a+json")
+                    return
+                task = agent._handle_send_raw(body)
+                if path == "/message:send":
+                    self._send(200, {"task": agent._view_v1(task)}, "application/a2a+json")
+                else:
+                    agent._stream_v1(self, {"rpc": False}, task["id"])
 
         self._server = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
         self.port = self._server.server_address[1]
@@ -206,6 +381,10 @@ class MockAgent:
             t["history"].append({"state": state, "ts": time.time()})
 
     def _handle_send(self, params: dict) -> dict:
+        """Legacy (pre-1.0) view of :meth:`_handle_send_raw`."""
+        return self._task_view(self._handle_send_raw(params))
+
+    def _handle_send_raw(self, params: dict) -> dict:
         """Scripted task machine. Keywords in the text select the path:
         'fail' -> FAILED, 'need input' -> INPUT_REQUIRED, 'slow' -> stays
         WORKING (for poll demos); anything else -> COMPLETED with an artifact.
@@ -226,6 +405,10 @@ class MockAgent:
                          "input" if "need input" in low else
                          "slow" if "slow" in low else "ok"),
                 "text": text,
+                "user_message": {
+                    "messageId": str(message.get("messageId") or self._next_id("msg")),
+                    "contextId": context_id, "taskId": task_id,
+                    "role": "ROLE_USER", "parts": [{"text": text}]},
             }
         task = self._get_task(task_id)
         assert task is not None
@@ -253,7 +436,7 @@ class MockAgent:
                 t["state"] = "TASK_STATE_COMPLETED"
                 t["message"] = "done"
                 t["history"].append({"state": "TASK_STATE_COMPLETED", "ts": time.time()})
-        return self._task_view(self._get_task(task_id) or {})
+        return self._get_task(task_id) or {}
 
     def _cancel(self, task_id: str) -> dict:
         with self._lock:
@@ -278,6 +461,137 @@ class MockAgent:
                 t["artifacts"].append({"artifactId": f"artifact-{self._counter:04d}",
                                       "parts": [{"text": f"[{self.name}] slow task finished"}]})
                 t["history"].append({"state": "TASK_STATE_COMPLETED", "ts": time.time()})
+
+    # -- v1.0 views ----------------------------------------------------------
+    @property
+    def card_etag(self) -> str:
+        import hashlib
+        return '"' + hashlib.sha256(json.dumps(self.card, sort_keys=True).encode()).hexdigest()[:16] + '"'
+
+    def _all_tasks(self) -> list[dict]:
+        with self._lock:
+            return [copy.deepcopy(t) for t in self._tasks.values()]
+
+    @staticmethod
+    def _iso(ts: Optional[float] = None) -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts or time.time())) + ".000Z"
+
+    def _status_v1(self, task: dict, state: Optional[str] = None, with_message: bool = True) -> dict:
+        status = {"state": state or task["state"], "timestamp": self._iso()}
+        text = task.get("message")
+        if with_message and text:
+            status["message"] = {"messageId": f"{task['id']}-status", "contextId": task["contextId"],
+                                 "taskId": task["id"], "role": "ROLE_AGENT", "parts": [{"text": str(text)}]}
+        return status
+
+    def _view_v1(self, task: dict, state: Optional[str] = None, artifacts: bool = True) -> dict:
+        """A v1.0 ``Task``: ``status.message`` and ``history`` hold real Messages."""
+        if not task:
+            return {}
+        view = {"id": task["id"], "contextId": task["contextId"],
+                "status": self._status_v1(task, state)}
+        if artifacts and task.get("artifacts"):
+            view["artifacts"] = task["artifacts"]
+        if task.get("user_message"):
+            view["history"] = [task["user_message"]]
+        return view
+
+    def _emit_v1(self, handler, ctx: dict, eid: str, kind: str, body: dict) -> None:
+        payload = {kind: body}
+        if ctx.get("rpc"):
+            payload = {"jsonrpc": "2.0", "id": ctx.get("rid"), "result": payload}
+        handler.wfile.write(f"id: {eid}\ndata: {json.dumps(payload)}\n\n".encode())
+        handler.wfile.flush()
+
+    def _stream_v1(self, handler, ctx: dict, task_id: str) -> None:
+        """v1.0 stream: a Task snapshot, status/artifact updates, then close."""
+        self._sse_headers(handler)
+        t = self._get_task(task_id) or {}
+        states = [h["state"] for h in t.get("history", [])] or ["TASK_STATE_SUBMITTED"]
+        n = 0
+
+        def eid() -> str:
+            nonlocal n
+            n += 1
+            return f"{task_id}-{n}"
+
+        self._emit_v1(handler, ctx, eid(), "task", self._view_v1(t, states[0], artifacts=False))
+        final = states[-1] in _TERMINAL_STATES or states[-1] in _INTERRUPTED_STATES
+        for st in (states[1:-1] if final else states[1:]):
+            time.sleep(0.02)
+            self._emit_v1(handler, ctx, eid(), "statusUpdate",
+                          {"taskId": task_id, "contextId": t.get("contextId"),
+                           "status": self._status_v1(t, st, with_message=False)})
+        if t.get("mode") == "slow" and not final:
+            for _ in range(3):
+                time.sleep(0.15)
+                self._emit_v1(handler, ctx, eid(), "statusUpdate",
+                              {"taskId": task_id, "contextId": t.get("contextId"),
+                               "status": self._status_v1(t, "TASK_STATE_WORKING", with_message=False)})
+            with self._lock:
+                tt = self._tasks[task_id]
+                tt["state"] = "TASK_STATE_COMPLETED"
+                tt["message"] = "done"
+                tt["artifacts"].append({"artifactId": self._next_id("artifact"),
+                                        "parts": [{"text": f"[{self.name}] slow task finished"}]})
+                tt["history"].append({"state": "TASK_STATE_COMPLETED", "ts": time.time()})
+            t = self._get_task(task_id) or {}
+            final = True
+        if not final:
+            return
+        for art in t.get("artifacts", []):
+            self._emit_v1(handler, ctx, eid(), "artifactUpdate",
+                          {"taskId": task_id, "contextId": t.get("contextId"), "artifact": art,
+                           "lastChunk": True})
+        if len(states) > 1 or t.get("state") != states[0]:
+            self._emit_v1(handler, ctx, eid(), "statusUpdate",
+                          {"taskId": task_id, "contextId": t.get("contextId"),
+                           "status": self._status_v1(t)})
+
+    def _subscribe_v1(self, handler, ctx: dict, task_id: str) -> None:
+        """SubscribeToTask: error for unknown/final tasks (spec 9.4.6), else stream."""
+        t = self._get_task(task_id)
+        if t is None:
+            self._sub_error(handler, ctx, "TaskNotFoundError", "task not found")
+            return
+        if t["state"] in _TERMINAL_STATES:
+            self._sub_error(handler, ctx, "UnsupportedOperationError",
+                            "task is in a terminal state; use GetTask")
+            return
+        self._sse_headers(handler)
+        self._emit_v1(handler, ctx, f"{task_id}-sub-0", "task", self._view_v1(t))
+        if t.get("mode") == "slow":
+            for i in range(2):
+                time.sleep(0.1)
+                self._emit_v1(handler, ctx, f"{task_id}-sub-{i + 1}", "statusUpdate",
+                              {"taskId": task_id, "contextId": t["contextId"],
+                               "status": self._status_v1(t, "TASK_STATE_WORKING", with_message=False)})
+            with self._lock:
+                tt = self._tasks[task_id]
+                tt["state"] = "TASK_STATE_COMPLETED"
+                tt["message"] = "done"
+                tt["history"].append({"state": "TASK_STATE_COMPLETED", "ts": time.time()})
+            self._emit_v1(handler, ctx, f"{task_id}-sub-9", "statusUpdate",
+                          {"taskId": task_id, "contextId": t["contextId"],
+                           "status": self._status_v1(self._get_task(task_id) or t)})
+
+    def _sub_error(self, handler, ctx: dict, name: str, message: str) -> None:
+        code, http_status, reason = wire.ERRORS[name]
+        info = {"@type": wire.ERRORINFO_TYPE, "reason": reason,
+                "domain": wire.ERRORINFO_DOMAIN, "metadata": {}}
+        if ctx.get("rpc"):
+            body = {"jsonrpc": "2.0", "id": ctx.get("rid"),
+                    "error": {"code": code, "message": message, "data": [info]}}
+            status = 200
+        else:
+            body = {"error": {"code": http_status, "message": message, "details": [info]}}
+            status = http_status
+        raw = json.dumps(body).encode()
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(raw)))
+        handler.end_headers()
+        handler.wfile.write(raw)
 
     # -- SSE ---------------------------------------------------------------
     def _sse_headers(self, handler: http.server.BaseHTTPRequestHandler) -> None:
@@ -391,9 +705,10 @@ class Scenario:
 def _rpc(url: str, method: str, params: dict, timeout: float = 15.0) -> dict:
     payload = {"jsonrpc": "2.0", "id": f"a2aops-{int(time.time() * 1000)}",
                "method": method, "params": params}
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json",
-                                          "User-Agent": "a2aops/1.0"})
+    headers = {"Content-Type": "application/json", "User-Agent": "a2aops/1.0"}
+    if method in wire.V1_METHODS:           # v1.0 method names carry the version header
+        headers["A2A-Version"] = wire.A2A_VERSION
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8-sig"))
 
@@ -441,15 +756,17 @@ def run_scenario(scenario: Scenario, log_path: str,
             log({"kind": "message_send", "from": step.frm, "to": step.to,
                  "url": target.base_url + "/", "text": step.text})
             try:
-                resp = _rpc(target.base_url + "/", "message/send", {
+                resp = _rpc(target.base_url + "/", wire.M_SEND, {
                     "message": {"messageId": f"msg-{int(time.time()*1000)}",
-                                "role": "user",
+                                "role": "ROLE_USER",
                                 "parts": [{"text": step.text}]}})
             except Exception as e:
                 log({"kind": "error", "from": step.frm, "to": step.to,
-                     "message": f"message/send failed: {e}"})
+                     "message": f"SendMessage failed: {e}"})
                 continue
-            result = resp.get("result", {})
+            result = wire.unwrap(resp.get("result", {}))[1]
+            if not isinstance(result, dict):
+                result = {}
             log({"kind": "task_created", "from": step.frm, "to": step.to,
                  "task": result})
             tasks.append({"from": step.frm, "to": step.to, "task": result})
@@ -460,11 +777,13 @@ def run_scenario(scenario: Scenario, log_path: str,
                 for _ in range(50):
                     time.sleep(0.1)
                     try:
-                        got = _rpc(target.base_url + "/", "tasks/get", {"id": task_id})
+                        got = _rpc(target.base_url + "/", wire.M_GET, {"id": task_id})
                     except Exception as e:
-                        log({"kind": "error", "message": f"tasks/get failed: {e}"})
+                        log({"kind": "error", "message": f"GetTask failed: {e}"})
                         break
                     t = got.get("result", {})
+                    if not isinstance(t, dict):
+                        t = {}
                     state = (t.get("status") or {}).get("state", "")
                     log({"kind": "task_polled", "task_id": task_id, "state": state})
                     if state in _TERMINAL_STATES:

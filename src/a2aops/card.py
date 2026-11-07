@@ -56,6 +56,8 @@ class FetchInfo:
     status: int
     elapsed_ms: int
     content_type: str = ""
+    cache_control: str = ""
+    etag: str = ""
 
 
 class CardFetchError(RuntimeError):
@@ -98,6 +100,8 @@ def fetch_card(base_url: str, timeout: float = 10.0,
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 status = resp.status
                 content_type = resp.headers.get("Content-Type", "")
+                cache_control = resp.headers.get("Cache-Control", "")
+                etag = resp.headers.get("ETag", "")
                 body = read_capped(resp)
         except ResponseTooLarge as e:
             raise CardFetchError(f"GET {url}: {e}") from e
@@ -133,6 +137,8 @@ def fetch_card(base_url: str, timeout: float = 10.0,
             status=status,
             elapsed_ms=elapsed_ms,
             content_type=content_type,
+            cache_control=cache_control,
+            etag=etag,
         )
         return card, info
 
@@ -192,15 +198,29 @@ def validate_card(card: Any) -> list[Diagnostic]:
                 for f in spec["interface_required_fields"]:
                     if f not in iface:
                         diags.append(Diagnostic(ERROR, "E104", f"missing required field '{f}'", f"{p}.{f}"))
+                from . import schema as _schema
                 url = iface.get("url")
-                if url is not None and not _is_abs_url(url):
-                    diags.append(Diagnostic(ERROR, "E105", "'url' must be an absolute URL", f"{p}.url"))
                 binding = iface.get("protocolBinding")
+                if url is not None and not _schema.interface_url_ok(url, binding):
+                    want = ("host:port or a URL" if binding == "GRPC" else
+                            "an absolute URL" if isinstance(binding, str) and binding not in spec["protocol_bindings"]
+                            else "an absolute http(s) URL")
+                    diags.append(Diagnostic(ERROR, "E105", f"'url' must be {want}", f"{p}.url"))
                 if binding is not None and binding not in spec["protocol_bindings"]:
-                    diags.append(Diagnostic(
-                        ERROR, "E106",
-                        f"unknown protocolBinding '{binding}' (expected one of {', '.join(spec['protocol_bindings'])})",
-                        f"{p}.protocolBinding"))
+                    if _schema.binding_is_custom_uri(binding):
+                        diags.append(Diagnostic(
+                            INFO, "I209",
+                            f"custom protocolBinding '{binding}' (spec 5.8): standard clients will skip this interface",
+                            f"{p}.protocolBinding"))
+                    elif isinstance(binding, str):
+                        diags.append(Diagnostic(
+                            WARNING, "W212",
+                            f"unknown protocolBinding '{binding}' (standard: {', '.join(spec['protocol_bindings'])}; "
+                            "custom bindings should be identified by a URI, spec 5.8)",
+                            f"{p}.protocolBinding"))
+                    else:
+                        diags.append(Diagnostic(ERROR, "E106", "'protocolBinding' must be a string",
+                                                f"{p}.protocolBinding"))
 
     # --- capabilities ----------------------------------------------------
     caps = card.get("capabilities")
@@ -309,10 +329,7 @@ def lint_card(card: dict) -> list[Diagnostic]:
     if isinstance(desc, str) and len(desc.strip()) < 10:
         diags.append(Diagnostic(WARNING, "W203", "description is very short; routers and humans match on it", "description"))
 
-    # W204: empty skills array — valid, but a card advertising nothing
-    skills = card.get("skills")
-    if isinstance(skills, list) and not skills:
-        diags.append(Diagnostic(WARNING, "W204", "'skills' is empty; the agent advertises no abilities", "skills"))
+    # (an empty 'skills' array is now error E124 - spec 5.7 requires at least one element)
 
     # W205: streaming without any fallback signal
     caps = card.get("capabilities")
@@ -336,9 +353,15 @@ def _looks_semver(v: str) -> bool:
     return len(parts) >= 2 and all(p.split("-")[0].split("+")[0].isdigit() for p in parts[:3] if p)
 
 
-def check_card(card: Any) -> list[Diagnostic]:
+def check_card(card: Any, local_origin: bool = False) -> list[Diagnostic]:
     """Validate + lint in one pass (validate first so errors sort first)."""
-    return validate_card(card) + lint_card(card if isinstance(card, dict) else {})
+    from . import schema as _schema
+    base = validate_card(card)
+    # structural checks only add to what validate_card already reports
+    seen = {(d.code, d.path) for d in base}
+    extra = [d for d in _schema.validate_structure(card) if (d.code, d.path) not in seen]
+    from . import cardsec as _cardsec
+    return base + extra + lint_card(card if isinstance(card, dict) else {}) + _cardsec.lint_security(card, local_origin=local_origin)
 
 
 def has_errors(diags: list[Diagnostic]) -> bool:
