@@ -11,6 +11,7 @@ and an unreadable or malformed baseline is an error (fail closed).
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import re
 from typing import Iterable, Optional
@@ -49,9 +50,24 @@ def write_baseline(path: str, diags: list[Diagnostic]) -> int:
     rows = sorted({fingerprint(d): {"id": fingerprint(d), "code": d.code, "path": d.path}
                    for d in diags}.values(), key=lambda r: (r["code"], r["path"]))
     doc = {"a2aops_baseline": BASELINE_VERSION, "written_by": f"a2aops {__version__}", "findings": rows}
+    # Write a sibling temp file, then rename it over the target, so a crash or
+    # two CI jobs writing at once never leave a half-written baseline. If the
+    # rename is refused (Windows: target open elsewhere; some network shares),
+    # fall back to writing in place.
+    tmp = f"{path}.{os.getpid()}.tmp"
+    payload = json.dumps(doc, indent=2) + "\n"
     try:
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(json.dumps(doc, indent=2) + "\n")
+        try:
+            with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                f.write(payload)
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(payload)
     except OSError as e:
         raise SuppressError(f"cannot write baseline {path}: {e}") from e
     return len(rows)

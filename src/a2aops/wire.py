@@ -34,7 +34,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Optional
 
-from .net import USER_AGENT, ResponseTooLarge, loads_strict, read_capped
+from .net import USER_AGENT, ResponseTooLarge, loads_strict, open_url, read_capped, SafeRedirects
 
 A2A_VERSION = "1.0"
 ERRORINFO_TYPE = "type.googleapis.com/google.rpc.ErrorInfo"
@@ -150,7 +150,9 @@ def http_request(method: str, url: str, body: Optional[bytes] = None,
     """Perform one request. Transport problems are returned in ``Http.error``."""
     started = time.monotonic()
     req = urllib.request.Request(url, data=body, headers=headers or {}, method=method)
-    opener = urllib.request.build_opener() if follow_redirects else \
+    if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
+        return Http(error="only http and https URLs are supported")
+    opener = urllib.request.build_opener(SafeRedirects()) if follow_redirects else \
         urllib.request.build_opener(_NoRedirect)
     out = Http()
     try:
@@ -383,7 +385,7 @@ def sse_collect(method: str, url: str, body: Optional[bytes], headers: dict, *,
     headers["Accept"] = "text/event-stream"
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        resp = urllib.request.urlopen(req, timeout=min(deadline, 30.0))
+        resp = open_url(req, min(deadline, 30.0))
     except urllib.error.HTTPError as e:
         cap.status = e.code
         cap.headers = {k.lower(): v for k, v in (e.headers or {}).items()}

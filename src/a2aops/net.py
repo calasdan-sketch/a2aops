@@ -227,7 +227,72 @@ def check_public_url(url: str, resolver: Optional[Resolver] = None) -> None:
                 "(use --allow-private to override)")
 
 
-class _GuardedRedirects(urllib.request.HTTPRedirectHandler):
+#: Headers that are safe to send to a different origin after a redirect.
+#: Everything else (Authorization, Cookie, API keys passed with --header) is
+#: dropped, because the redirect target is chosen by the server, not by you.
+_CROSS_ORIGIN_KEEP = frozenset({"accept", "user-agent", "a2a-version", "cache-control",
+                                "accept-language"})
+
+
+def _origin(url: str) -> tuple:
+    p = urllib.parse.urlsplit(url)
+    default = {"http": 80, "https": 443}.get(p.scheme)
+    try:
+        port = p.port or default
+    except ValueError:
+        port = default
+    return (p.scheme, (p.hostname or "").lower(), port)
+
+
+class SafeRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow only http(s) redirects and never replay credentials elsewhere.
+
+    ``urllib`` follows a redirect to ``ftp://`` and copies every request header
+    (including ``Authorization``) to the new host. Both are wrong for a tool
+    that sends your ``--header`` credentials to one host only.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        full = urllib.parse.urljoin(req.full_url, newurl)
+        if urllib.parse.urlsplit(full).scheme.lower() not in ("http", "https"):
+            raise urllib.error.HTTPError(
+                req.full_url, code, f"refusing redirect to a non-http(s) URL ({redact_url(full)})",
+                headers, fp)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and _origin(full) != _origin(req.full_url):
+            new.headers = {k: v for k, v in new.headers.items() if k.lower() in _CROSS_ORIGIN_KEEP}
+            new.unredirected_hdrs = {k: v for k, v in new.unredirected_hdrs.items()
+                                     if k.lower() in _CROSS_ORIGIN_KEEP}
+        return new
+
+
+def redact_url(url: str) -> str:
+    """Drop ``user:password@`` from a URL before it is shown or logged."""
+    try:
+        p = urllib.parse.urlsplit(url)
+        if p.username is None and p.password is None:
+            return url
+        host = p.hostname or ""
+        if ":" in host:
+            host = f"[{host}]"
+        netloc = host + (f":{p.port}" if p.port else "")
+        return urllib.parse.urlunsplit((p.scheme, "***@" + netloc, p.path, p.query, p.fragment))
+    except ValueError:
+        return url
+
+
+def open_url(req: urllib.request.Request, timeout: float):
+    """``urlopen`` for URLs the user typed: http(s) only, safe redirects."""
+    scheme = urllib.parse.urlsplit(req.full_url).scheme.lower()
+    if scheme not in ("http", "https"):
+        raise urllib.error.URLError(f"only http and https URLs are supported, not '{scheme or 'none'}'")
+    if "@" in urllib.parse.urlsplit(req.full_url).netloc:
+        raise urllib.error.URLError("URLs with user:password@ are not supported (the password would "
+                                    "end up in logs); pass credentials with --header where offered")
+    return urllib.request.build_opener(SafeRedirects()).open(req, timeout=timeout)
+
+
+class _GuardedRedirects(SafeRedirects):
     def __init__(self, resolver: Optional[Resolver]):
         super().__init__()
         self._resolver = resolver

@@ -49,7 +49,7 @@ SCHEMA: dict[str, dict[str, tuple[str, bool]]] = {
 #: v0.3-era / deprecated top-level fields: reported by ``compat``, not as typos here.
 _LEGACY_CARD_KEYS = frozenset({
     "url", "preferredTransport", "protocolVersion", "additionalInterfaces", "security",
-    "supportsAuthenticatedExtendedCard", "supportsAuthenticatedExtendedCard",
+    "supportsAuthenticatedExtendedCard",
 })
 _SNAKE = re.compile(r"[a-z]+(_[a-z0-9]+)+$")
 _MEDIA = re.compile(r"^[A-Za-z0-9!#$&^_.+*-]+/[A-Za-z0-9!#$&^_.+*-]+(\s*;.*)?$")

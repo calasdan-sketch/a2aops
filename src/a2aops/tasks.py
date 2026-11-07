@@ -20,7 +20,6 @@ Two modes:
 
 from __future__ import annotations
 
-import json
 import time
 import urllib.parse
 import urllib.request
@@ -169,9 +168,12 @@ def _observation_row(row: Any, path: str, n: int) -> Optional[Observation]:
         raise ValueError(f"{path}:{n}: each line must be a JSON object")
     if "task_id" in row and "state" in row:
         # Direct shape, or a playground task_polled / task_terminal entry.
+        try:
+            ts = float(row.get("ts", 0.0))
+        except (TypeError, ValueError):
+            raise ValueError(f"{path}:{n}: 'ts' must be a number") from None
         return Observation(task_id=str(row["task_id"]), state=str(row["state"]),
-                           ts=float(row.get("ts", 0.0)),
-                           message=row.get("message"))
+                           ts=ts, message=row.get("message"))
     kind = row.get("kind")
     if kind == "task_created":
         task = row.get("task") or {}

@@ -12,7 +12,6 @@ errors (panel decision D2).
 from __future__ import annotations
 
 import http.client
-import json
 import re
 import time
 import urllib.error
@@ -22,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from . import secreq
-from .net import USER_AGENT, ResponseTooLarge, clean, loads_strict, read_capped
+from .net import USER_AGENT, ResponseTooLarge, clean, loads_strict, open_url, read_capped, redact_url
 from .spec import load_spec
 
 ERROR = "error"
@@ -91,47 +90,48 @@ def fetch_card(base_url: str, timeout: float = 10.0,
 
     for i, path in enumerate(candidates):
         url = base + path
+        shown = redact_url(url)
         started = time.monotonic()
         try:
             req = urllib.request.Request(
                 url,
                 headers={"Accept": "application/json", "User-Agent": USER_AGENT},
             )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with open_url(req, timeout) as resp:
                 status = resp.status
                 content_type = resp.headers.get("Content-Type", "")
                 cache_control = resp.headers.get("Cache-Control", "")
                 etag = resp.headers.get("ETag", "")
                 body = read_capped(resp)
         except ResponseTooLarge as e:
-            raise CardFetchError(f"GET {url}: {e}") from e
+            raise CardFetchError(f"GET {shown}: {e}") from e
         except urllib.error.HTTPError as e:
             if e.code == 404 and i == 0 and len(candidates) > 1:
                 saw_404_on_modern = True
                 continue  # try the legacy path before giving up
-            raise CardFetchError(f"GET {url} -> HTTP {e.code}") from e
+            raise CardFetchError(f"GET {shown} -> HTTP {e.code}") from e
         except urllib.error.URLError as e:
-            raise CardFetchError(f"GET {url} failed: {e.reason}") from e
+            raise CardFetchError(f"GET {shown} failed: {e.reason}") from e
         except (TimeoutError, OSError) as e:
-            raise CardFetchError(f"GET {url} failed: {e}") from e
+            raise CardFetchError(f"GET {shown} failed: {e}") from e
         except (ValueError, http.client.HTTPException) as e:
             # http.client.InvalidURL (an HTTPException, not a ValueError), bad
             # IDNA labels (UnicodeError), bad IPv6 literals, unknown URL types,
             # and protocol-level garbage (BadStatusLine, IncompleteRead)
-            raise CardFetchError(f"GET {url!r} failed: {e}") from e
+            raise CardFetchError(f"GET {shown!r} failed: {e}") from e
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
         try:
             text = body.decode("utf-8-sig")  # tolerate a BOM
             card = loads_strict(text)
         except (UnicodeDecodeError, ValueError) as e:
-            raise CardFetchError(f"GET {url} returned non-JSON body: {e}") from e
+            raise CardFetchError(f"GET {shown} returned non-JSON body: {e}") from e
         if not isinstance(card, dict):
-            raise CardFetchError(f"GET {url} returned a JSON {type(card).__name__}, not an object")
+            raise CardFetchError(f"GET {shown} returned a JSON {type(card).__name__}, not an object")
 
         info = FetchInfo(
-            base_url=base,
-            resolved_url=url,
+            base_url=redact_url(base),
+            resolved_url=shown,
             path_used=path,
             legacy_fallback=(i > 0 and saw_404_on_modern),
             status=status,
@@ -143,10 +143,10 @@ def fetch_card(base_url: str, timeout: float = 10.0,
         return card, info
 
     if card_path is not None:
-        raise CardFetchError(f"No AgentCard found at {base}{card_path}")
+        raise CardFetchError(f"No AgentCard found at {redact_url(base)}{card_path}")
     raise CardFetchError(
-        f"No AgentCard found at {base}{spec['card_path']} "
-        f"or legacy {base}{spec['legacy_card_paths'][0]}"
+        f"No AgentCard found at {redact_url(base)}{spec['card_path']} "
+        f"or legacy {redact_url(base)}{spec['legacy_card_paths'][0]}"
     ) from last_error
 
 

@@ -87,6 +87,27 @@ def _emit(args, diags, *, command: str, label: str, text=None,
     return 1 if report_mod.failed(diags, strict) else 0
 
 
+def _pos_float(text: str) -> float:
+    """argparse type: a finite number greater than zero (rejects 0, -5, nan, inf)."""
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
+    if not (0 < v < 1e9):
+        raise argparse.ArgumentTypeError(f"{text!r} must be a number greater than 0 (seconds)")
+    return v
+
+
+def _nonneg_int(text: str) -> int:
+    try:
+        v = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+    if v < 0:
+        raise argparse.ArgumentTypeError(f"{text!r} must be 0 or more")
+    return v
+
+
 def _err(e) -> int:
     print(f"error: {clean(e)}", file=sys.stderr)
     return 2
@@ -307,6 +328,8 @@ def cmd_task_poll(args) -> int:
 def cmd_task_inspect(args) -> int:
     try:
         observations = tasks_mod.observations_from_jsonl(args.events)
+    except FileNotFoundError:
+        return _err(f"file not found: {args.events}")
     except (OSError, ValueError) as e:
         return _err(e)
     insp = tasks_mod.TaskInspector()
@@ -336,7 +359,10 @@ def cmd_stream(args) -> int:
 
 def cmd_play_demo(args) -> int:
     scenario = demo_scenario()
-    report = run_scenario(scenario, args.log)
+    try:
+        report = run_scenario(scenario, args.log)
+    except OSError as e:
+        return _err(f"cannot write the session log {args.log}: {e}")
     print(f"agents: {', '.join(report.agents)}")
     print(f"steps: {report.steps}  elapsed: {report.elapsed_s:.1f}s  log: {report.log_path}")
     for t in report.tasks:
@@ -351,7 +377,10 @@ def cmd_play_run(args) -> int:
         scenario = Scenario.from_json(args.scenario)
     except (OSError, ValueError) as e:
         return _err(f"cannot load scenario: {e}")
-    report = run_scenario(scenario, args.log)
+    try:
+        report = run_scenario(scenario, args.log)
+    except OSError as e:
+        return _err(f"cannot write the session log {args.log}: {e}")
     print(f"agents: {', '.join(report.agents)}  steps: {report.steps}  log: {report.log_path}")
     return 0
 
@@ -368,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
     src_help = "agent base URL, a card JSON file, or '-' for stdin"
 
     def fetch_opts(sp):
-        sp.add_argument("--timeout", type=float, default=10.0)
+        sp.add_argument("--timeout", type=_pos_float, default=10.0)
         sp.add_argument("--card-path", default=None, metavar="PATH",
                         help="fetch the card from this path instead of /.well-known discovery")
 
@@ -445,8 +474,8 @@ def build_parser() -> argparse.ArgumentParser:
     tp.add_argument("base")
     tp.add_argument("task_id")
     tp.add_argument("--binding", choices=["rest", "jsonrpc"], default="rest")
-    tp.add_argument("--interval", type=float, default=2.0)
-    tp.add_argument("--timeout", type=float, default=300.0)
+    tp.add_argument("--interval", type=_pos_float, default=2.0)
+    tp.add_argument("--timeout", type=_pos_float, default=300.0)
     tp.add_argument("--legacy", action="store_true",
                     help="speak the pre-1.0 (0.3) JSON-RPC dialect (tasks/get)")
     tp.set_defaults(func=cmd_task_poll)
@@ -462,9 +491,9 @@ def build_parser() -> argparse.ArgumentParser:
     st.add_argument("base")
     st.add_argument("task_id")
     st.add_argument("--binding", choices=["rest", "jsonrpc"], default="rest")
-    st.add_argument("--max-events", type=int, default=0,
+    st.add_argument("--max-events", type=_nonneg_int, default=0,
                     help="stop after N events (0 = unlimited)")
-    st.add_argument("--max-reconnects", type=int, default=10)
+    st.add_argument("--max-reconnects", type=_nonneg_int, default=10)
     st.add_argument("--legacy", action="store_true",
                     help="speak the pre-1.0 (0.3) wire dialect: tasks/resubscribe, /v1/ REST path")
     st.set_defaults(func=cmd_stream)
@@ -481,7 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
                      help="test only this binding (repeatable; default: all offered)")
     cf2.add_argument("--only", action="append", metavar="ID", help="run only this check id (repeatable; unknown ids are an error)")
     cf2.add_argument("--skip", action="append", metavar="ID", help="do not run this check id (repeatable; unknown ids are an error)")
-    cf2.add_argument("--timeout", type=float, default=10.0)
+    cf2.add_argument("--timeout", type=_pos_float, default=10.0)
     cf2.add_argument("--card-path", default=None, metavar="PATH")
     cf2.set_defaults(func=cmd_conformance)
 

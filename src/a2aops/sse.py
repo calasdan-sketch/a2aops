@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterator, Optional
 
 from . import wire
-from .net import USER_AGENT, loads_strict
+from .net import USER_AGENT, loads_strict, open_url
 from .states import is_terminal, normalize_state
 
 
@@ -154,7 +154,7 @@ def open_sse(url: str, headers: Optional[dict] = None,
         "User-Agent": USER_AGENT,
         **(headers or {}),
     })
-    return urllib.request.urlopen(req, timeout=timeout)
+    return open_url(req, timeout)
 
 
 def build_resubscribe_request(base_url: str, task_id: str,

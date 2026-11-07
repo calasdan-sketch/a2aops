@@ -1,21 +1,28 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "a2aops"
 version = "1.3.0"
-description = "Operational toolkit for the A2A protocol: AgentCard validation and lint, v0.x to v1.0 migration reports, auth-surface checks, task lifecycle inspection, SSE resubscription, and a local multi-agent playground, breaking-change diffs between cards, and SARIF output for CI."
+description = "Lint, diff, verify and conformance-test A2A agents and AgentCards from one zero-dependency CLI; SARIF/JUnit output for CI."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Calas Automations Inc." }]
-keywords = ["a2a", "agent-to-agent", "agents", "protocol", "devtools"]
+keywords = ["a2a", "agent-to-agent", "agentcard", "agents", "protocol", "linter", "conformance", "sarif", "devtools"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
     "Topic :: Software Development :: Testing",
     "Topic :: System :: Monitoring",
 ]
@@ -31,7 +38,7 @@ a2aops = "a2aops.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-a2aops = ["spec_snapshot.json"]
+a2aops = ["spec_snapshot.json", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

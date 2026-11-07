@@ -12,7 +12,6 @@ the card. No credentials are sent, stored, or logged.
 
 from __future__ import annotations
 
-import json
 import urllib.parse
 from typing import Optional
 

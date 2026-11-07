@@ -17,10 +17,18 @@ is a procurement conversation.
 ## Install
 
 ```bash
-pip install a2aops
+pip install "a2aops>=1.3"
 # or from a source checkout (no network needed):
 pip install ./a2aops
 ```
+
+Check `a2aops --version` afterwards. As of 2026-11-07 the newest release on
+PyPI is **1.1.0**, which predates `card diff`, `conformance`, `card verify`,
+`explain`, baselines and SARIF line locations described below; those need 1.3.0
+or newer. Until 1.3.0 is published, install from a checkout of this repository.
+Supported: Python 3.10 to 3.13 on Linux (tested on 3.11, 3.12 and 3.13). macOS
+and Windows are expected to work (standard library only, no shell calls) but
+have **not been run**; Python 3.10 has not been run in this release either.
 
 ## 60-second tour
 
@@ -192,6 +200,12 @@ AgentCards are attacker-controllable input, so `a2aops` treats them that way:
   first. The ranges are listed explicitly, so results are the same on Python
   3.10–3.13 (whose built-in `is_global` tables differ). Every redirect hop is
   re-checked. `--allow-private` turns this off for local development stacks.
+- **Credentials stay on one host.** URLs you type must be `http` or `https`
+  (`file://` and `ftp://` are refused, as are redirects to them). If a server
+  redirects to a different host or port, everything except `Accept`,
+  `User-Agent` and `A2A-Version` is dropped, so a `--header "Authorization: ..."`
+  is never replayed to wherever the server points. `user:password@` in a URL is
+  refused and shown as `***@` in messages.
 - **Size caps.** Network JSON bodies are capped at 2 MiB, local files and stdin
   at 16 MiB.
 - **Strict JSON.** Every untrusted document (cards, discovery documents, JWKS,
@@ -332,7 +346,7 @@ no install.
 
 ```bash
 cd a2aops
-PYTHONPATH=src python3 -m unittest discover -s tests   # 284 tests, zero deps
+PYTHONPATH=src python3 -m unittest discover -s tests   # 302 tests, zero deps
 PYTHONPATH=src python3 -m bench.fuzz 6000                # hostile-input fuzz, exit 1 on any crash
 python3 -m compileall -q src tests
 ```

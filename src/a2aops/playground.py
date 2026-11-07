@@ -694,13 +694,27 @@ class Scenario:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Scenario":
-        steps = [ScenarioStep(s["from"], s["to"], s["text"]) for s in data.get("script", [])]
-        return cls(agents=data.get("agents", []), script=steps)
+        """Build a scenario, raising ValueError (never KeyError/TypeError) on bad shapes."""
+        if not isinstance(data, dict):
+            raise ValueError("a scenario must be a JSON object with 'agents' and 'script'")
+        agents = data.get("agents", [])
+        script = data.get("script", [])
+        if not isinstance(agents, list) or not all(
+                isinstance(a, dict) and isinstance(a.get("name"), str) and a["name"] for a in agents):
+            raise ValueError("'agents' must be a list of objects, each with a non-empty string 'name'")
+        if not isinstance(script, list):
+            raise ValueError("'script' must be a list of steps")
+        steps = []
+        for i, st in enumerate(script):
+            if not isinstance(st, dict) or not all(isinstance(st.get(k), str) for k in ("from", "to", "text")):
+                raise ValueError(f"script step {i + 1} needs string fields 'from', 'to' and 'text'")
+            steps.append(ScenarioStep(st["from"], st["to"], st["text"]))
+        return cls(agents=agents, script=steps)
 
     @classmethod
     def from_json(cls, path: str) -> "Scenario":
-        with open(path, encoding="utf-8") as f:
-            return cls.from_dict(json.load(f))
+        with open(path, encoding="utf-8-sig") as f:
+            return cls.from_dict(loads_strict(f.read(16 << 20)))
 
 
 def _rpc(url: str, method: str, params: dict, timeout: float = 15.0) -> dict:
@@ -728,7 +742,7 @@ def run_scenario(scenario: Scenario, log_path: str,
     """Start the mock agents, run the script, write the JSONL wire log."""
     started = time.time()
     agents: dict[str, MockAgent] = {}
-    logf = open(log_path, "w", encoding="utf-8")
+    logf = open(log_path, "w", encoding="utf-8", newline="\n")
 
     def log(entry: dict) -> None:
         entry = {"ts": time.time(), **entry}

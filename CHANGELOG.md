@@ -2,6 +2,31 @@
 
 ## 1.3.0 — unreleased
 
+### Round 4 (the first hour after `pip install`)
+
+Panel notes and the scored idea list are in `docs/ROUND4.md`; release steps in `PUBLISH-CHECKLIST.md`. Regression tests: `tests/test_round4.py`.
+
+**Fixed**
+- **`--header` credentials followed redirects to other hosts.** `conformance --header "Authorization: ..."` was documented as host-bound, but a server that answered 302 to another host or port received the header too (`urllib` copies request headers on redirect). Cross-origin redirects now keep only `Accept`, `User-Agent`, `A2A-Version`, `Cache-Control`, `Accept-Language`. Verified before and after with two local servers.
+- **`file://`, `ftp://` and other schemes** typed as a source were handed to `urllib` (and a redirect could reach `ftp://`). Only `http`/`https` are accepted now, with a plain message.
+- `user:password@` in a URL was echoed in error messages and in the JSON `base_url`; it is refused (`urllib` cannot use it anyway) and shown as `***@`.
+- `play demo --log <unwritable>` and `play run` with a malformed scenario ended in a Python traceback (`FileNotFoundError`, `KeyError`); both are now one-line exit-2 errors. A scenario file may start with a BOM, uses the strict JSON loader and is read with a 16 MiB cap.
+- `--timeout 0`, `-5`, `nan`, `inf` were accepted (a zero or negative timeout behaves unpredictably); they are usage errors now. Same for negative `--max-reconnects` / `--max-events` and non-positive `--interval`.
+- `task inspect` on a missing file said `[Errno 2] ...`; a non-numeric `ts` raised `TypeError`. Both are plain exit-2 messages.
+- `--write-baseline` is written to a temp file and renamed, so a crash or two parallel CI jobs cannot leave half a baseline (falls back to an in-place write if the rename is refused, e.g. on Windows). Playground logs always use `\n` line endings.
+- Removed three unused `json` imports and a duplicated set member found by `ruff --select F,B`.
+
+**Packaging**
+- Added `LICENSE` (the README said MIT but the file was missing from the repo and from both artifacts), `py.typed`, `MANIFEST.in` (the sdist now carries CHANGELOG, LICENSE, tests with fixtures, `bench/` and `action.yml`), SPDX `license = "MIT"` (needs setuptools >= 77 at build time), Python 3.10-3.13 and `Typing :: Typed` classifiers, more keywords and a shorter PyPI summary.
+- A test now fails if `pyproject.toml`, `__version__` and the top CHANGELOG heading disagree, or if LICENSE / `py.typed` go missing.
+
+**Docs**
+- README install section states plainly that PyPI currently has 1.1.0, which lacks most of what the README describes, and what has and has not been tested (Linux only; Windows, macOS and Python 3.10 not run).
+
+**Tests** 284 -> 302. Benchmarks unchanged (see `bench/RESULTS.json`).
+
+**Not done / unverified:** nothing was run on Windows, macOS or Python 3.10; no `Repository`/`Issues` project URLs because the public repository address is not known to this checkout; composite action still not run on a GitHub runner.
+
 ### Round 3 (hostile input, adoption, honesty of exit codes)
 
 Found by hand-testing as an attacker, a CI engineer, an auditor and a first-time
