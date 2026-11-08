@@ -44,6 +44,12 @@ def _skills_by_id(card: dict) -> dict[str, dict]:
     return out
 
 
+def _ext_key(ext: dict) -> str:
+    """Extensions are matched by uri; a non-string uri (hostile or broken card) must not crash the diff."""
+    uri = ext.get("uri")
+    return uri if isinstance(uri, str) else repr(uri)
+
+
 def _iface_key(iface: dict) -> tuple[str, str, str]:
     # tenant is part of the address: clients MUST send it on every request
     return (str(iface.get("protocolBinding", "")), str(iface.get("url", "")),
@@ -189,8 +195,8 @@ def diff_cards(old: Any, new: Any) -> list[Diagnostic]:
                           f"capabilities.{cap}"))
         elif oc.get(cap) is not True and nc.get(cap) is True:
             out.append(_d(INFO, "D703", f"capability '{cap}' enabled", f"capabilities.{cap}"))
-    old_ext = {e.get("uri"): e for e in _as_list(oc.get("extensions")) if isinstance(e, dict)}
-    new_ext = {e.get("uri"): e for e in _as_list(nc.get("extensions")) if isinstance(e, dict)}
+    old_ext = {_ext_key(e): e for e in _as_list(oc.get("extensions")) if isinstance(e, dict)}
+    new_ext = {_ext_key(e): e for e in _as_list(nc.get("extensions")) if isinstance(e, dict)}
     for uri, ext in new_ext.items():
         if ext.get("required") is True and _as_dict(old_ext.get(uri)).get("required") is not True:
             what = "is now required" if uri in old_ext else "is new and required"

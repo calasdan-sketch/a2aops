@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "a2aops",
+          "version": "<VERSION>",
+          "organization": "Calas Automations Inc.",
+          "informationUri": "https://calasautomations.com",
+          "rules": [
+            {
+              "id": "E101",
+              "name": "E101",
+              "shortDescription": {
+                "text": "missing required field 'supportedInterfaces'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E101` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E111",
+              "name": "E111",
+              "shortDescription": {
+                "text": "missing required field 'tags'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E111` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "I205",
+              "name": "I205",
+              "shortDescription": {
+                "text": "streaming is enabled but pushNotifications is not; clients behind SSE-blocking proxies will need polling fallback"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "help": {
+                "text": "Run `a2aops explain I205` for what this means and how to fix it."
+              }
+            }
+          ]
+        }
+      },
+      "automationDetails": {
+        "id": "a2aops/card-check/"
+      },
+      "results": [
+        {
+          "ruleId": "E101",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'supportedInterfaces'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v03.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "4a63fdacfe783612"
+          }
+        },
+        {
+          "ruleId": "E111",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'tags'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v03.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "skills[0].tags",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "0706b8ed599575a6"
+          }
+        },
+        {
+          "ruleId": "I205",
+          "level": "note",
+          "message": {
+            "text": "streaming is enabled but pushNotifications is not; clients behind SSE-blocking proxies will need polling fallback"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v03.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "capabilities",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "10fc5ecd2f0257c9"
+          }
+        }
+      ]
+    }
+  ]
+}
+--- exit 1 ---

@@ -1,0 +1,14 @@
+# pre-commit hook: lint a local AgentCard before it is committed.
+#   repos:
+#     - repo: <address of this repository>
+#       rev: v1.3.0
+#       hooks:
+#         - id: a2aops-card-check
+#           args: [path/to/agent-card.json]      # `card check` takes exactly one source
+- id: a2aops-card-check
+  name: a2aops card check
+  description: Validate and lint an A2A AgentCard (errors fail the commit).
+  entry: a2aops card check
+  language: python
+  pass_filenames: false
+  files: '(^|/)agent-card\.json$'

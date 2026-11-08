@@ -1,0 +1,89 @@
+{
+  "tool": "a2aops",
+  "version": "<VERSION>",
+  "command": "card-diff",
+  "source": "tests/fixtures/card_v1_minimal.json",
+  "strict": false,
+  "ok": false,
+  "counts": {
+    "error": 7,
+    "warning": 3,
+    "info": 2
+  },
+  "findings": [
+    {
+      "severity": "error",
+      "code": "D501",
+      "message": "interface removed: JSONRPC https://hotels.example.com/a2a/v1 \u2014 clients with this endpoint cached will fail",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "error",
+      "code": "D501",
+      "message": "interface removed: HTTP+JSON https://hotels.example.com/a2a/json \u2014 clients with this endpoint cached will fail",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "error",
+      "code": "D502",
+      "message": "skill removed: 'search-and-book' \u2014 callers routing to it will fail",
+      "path": "skills[id=search-and-book]"
+    },
+    {
+      "severity": "error",
+      "code": "D505",
+      "message": "defaultInputModes no longer includes ['application/json']",
+      "path": "defaultInputModes"
+    },
+    {
+      "severity": "error",
+      "code": "D506",
+      "message": "capability 'streaming' was turned off \u2014 clients relying on it break",
+      "path": "capabilities.streaming"
+    },
+    {
+      "severity": "error",
+      "code": "D506",
+      "message": "capability 'pushNotifications' was turned off \u2014 clients relying on it break",
+      "path": "capabilities.pushNotifications"
+    },
+    {
+      "severity": "error",
+      "code": "D506",
+      "message": "capability 'extendedAgentCard' was turned off \u2014 clients relying on it break",
+      "path": "capabilities.extendedAgentCard"
+    },
+    {
+      "severity": "warning",
+      "code": "D604",
+      "message": "defaultOutputModes no longer includes ['application/json']",
+      "path": "defaultOutputModes"
+    },
+    {
+      "severity": "warning",
+      "code": "D605",
+      "message": "agent: authentication requirements were removed; confirm this is intentional",
+      "path": "securityRequirements"
+    },
+    {
+      "severity": "warning",
+      "code": "D608",
+      "message": "breaking changes found but major version did not increase (2.3.0 -> 0.1.0)",
+      "path": "version"
+    },
+    {
+      "severity": "info",
+      "code": "D701",
+      "message": "interface added: JSONRPC https://minimal.example.com/",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "info",
+      "code": "D702",
+      "message": "skill added: 'ping'",
+      "path": "skills[id=ping]"
+    }
+  ],
+  "suppressed": 0
+}
+--- exit 1 ---

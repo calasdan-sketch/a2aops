@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites><testsuite name="a2aops card-check tests/fixtures/card_v03.json" tests="3" failures="2">
+    <properties><property name="tool" value="a2aops <VERSION> (Calas Automations Inc.)"/></properties>
+    <testcase classname="a2aops.card-check" name="E101 supportedInterfaces"><failure type="error" message="missing required field 'supportedInterfaces'">missing required field 'supportedInterfaces'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E111 skills[0].tags"><failure type="error" message="missing required field 'tags'">missing required field 'tags'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="I205 capabilities"><system-out>info: streaming is enabled but pushNotifications is not; clients behind SSE-blocking proxies will need polling fallback</system-out></testcase>
+  </testsuite></testsuites>
+--- exit 1 ---

@@ -40,7 +40,7 @@ a2aops card check ./agent-card.json --strict
 # 2. Will my card change break existing clients?
 a2aops card diff https://agent.example.com ./agent-card.json --semver
 
-# 2b. Does the agent actually speak v1.0? (49 checks with spec references)
+# 2b. Does the agent actually speak v1.0? (51 checks with spec references)
 a2aops conformance https://agent.example.com --active
 
 # 2c. Is the card signed by a key you trust?
@@ -105,6 +105,14 @@ Or use the bundled composite action (`action.yml`; inputs `card`, `agent-url`,
 `strict`, `ignore`, `baseline`, `old-card`). The action's shell logic was run
 locally against a stub CLI; it has not been run on a GitHub runner.
 
+On Windows PowerShell 5, `>` writes UTF-16, which SARIF upload rejects; use
+`--output a2aops.sarif` instead of the redirect. For pre-commit, `.pre-commit-hooks.yaml`
+defines a `a2aops-card-check` hook (you pass the card path in `args`; the hook file
+has been parsed but pre-commit itself has not been run against it). `.github/workflows/ci.yml`
+runs the test suite on Linux 3.10-3.13, one Windows and one macOS job; it has not run yet.
+Cost note: on a private repository GitHub counts macOS minutes at 10x and Windows at 2x against the
+free allowance.
+
 SARIF annotations point at the line of the offending key when the source is a
 local file (a small tokenizer maps `skills[2].tags` or `skills[id=x].tags` to
 the right element; if a key is missing the annotation lands on the object that
@@ -124,7 +132,7 @@ working directory become absolute `file://` URIs.
 | `a2aops card diff <old> <new>` | Breaking-change report between two cards (each a URL, file, or one `-`). Errors = breaks existing clients (removed skill/interface/input mode — including a skill narrowing the modes it used to inherit — capability turned off, auth newly required or an auth alternative removed at card or skill level, an extension becoming required, an interface's `tenant` changing); warnings = risky (preferred interface reordered, tags dropped, version not bumped, breaking change without a major bump); infos = additive. |
 | `a2aops explain [CODE]` | What a diagnostic code means and how to fix it; without a code, lists them all. A test fails if the checks emit a code that has no entry. |
 | `a2aops card fetch <base>` | Print the raw card JSON. |
-| `a2aops conformance <url>` | Live A2A v1.0 protocol checks (49 checks, each with a MUST/SHOULD/MAY level and a spec section): card serving and caching, JSON-RPC and HTTP+JSON error shapes, `A2A-Version`, push-notification and extension gates, SSE framing, auth enforcement, leak checks. Passive by default; `--active` also sends one harmless message (15 checks need it). Fails closed: an unreachable agent exits non-zero. `--format text\|json\|junit\|sarif`, `--binding`, `--only`, `--skip` (an unknown check id is an error, not a green empty run), `--header` (sent only to the card's host). Exits 2 if `--binding` names an interface the card does not offer, or if every check was skipped. |
+| `a2aops conformance <url>` | Live A2A v1.0 protocol checks (51 checks, each with a MUST/SHOULD/MAY level and a spec section): card serving and caching, JSON-RPC and HTTP+JSON error shapes, `A2A-Version`, push-notification and extension gates, SSE framing, auth enforcement, leak checks. Passive by default; `--active` also sends one harmless message (15 checks need it). Fails closed: an unreachable agent exits non-zero. `--format text\|json\|junit\|sarif`, `--binding`, `--only`, `--skip` (an unknown check id is an error, not a green empty run), `--header` (sent only to the card's host), `--output FILE`. A card served from a public host cannot aim the probes at your own network: interfaces that point at loopback, private or cloud-metadata addresses are skipped and named, unless you pass `--allow-private-endpoints` (or the URL you gave is itself local). Two browser-safety checks (`RPC-30`, `REST-30`; not in the A2A spec) warn when an endpoint echoes any `Origin` together with `Allow-Credentials: true`. Exits 2 if `--binding` names an interface the card does not offer, or if every check was skipped. |
 | `a2aops card verify <src> --jwks KEYS` | Verify the card's JWS signatures (ES256/384, RS256/384/512) against keys you trust, in pure Python. `alg` none/HS* are refused, the key decides the algorithm family, and `jku` is never followed unless you pass `--trust-jku` and it is on the card's own host. |
 | `a2aops compat <src>` | Detect the card version and print a v0.x → v1.0 migration checklist. Exit 1 if migration actions remain. `--format json` available. |
 | `a2aops auth <src>` | Check the declared auth surface: every `securityRequirements` entry must reference a declared scheme; OIDC discovery documents must resolve and expose a `token_endpoint`; OAuth2 flows need token URLs. Read-only. `--offline` skips remote fetches. Card-supplied URLs pass an SSRF guard (see Security). |
@@ -136,7 +144,7 @@ working directory become absolute `file://` URIs.
 
 Common options: `--ignore CODE` (a code such as `W203` or a prefix such as `S8`; repeatable or comma-separated),
 `--baseline FILE` / `--write-baseline FILE` (`card check`, `card diff`, `card verify`, `auth`), `--format text|json|sarif` (`card check`, `card diff`, `auth`),
-`--format junit` (`conformance`, `card check`), `--strict`, `--timeout`, and `--card-path /custom/card.json` for agents that
+`--format junit` (`conformance`, `card check`), `--output FILE` (write the report as UTF-8 with LF line ends instead of stdout; matters for PowerShell 5, whose `>` writes UTF-16; the exit code is unchanged and nothing is written when the run itself fails), `--strict`, `--timeout`, and `--card-path /custom/card.json` for agents that
 serve their card outside `/.well-known`.
 
 **Suppression and baselines.** `--write-baseline FILE` records today's findings
@@ -180,7 +188,7 @@ migrate.
 | `D6xx` | `card diff`: risky / likely to surprise clients |
 | `D7xx` | `card diff`: additive or informational |
 | `D610` / `D611` | `card diff --semver`: version moved less than the changes need / version is not semver |
-| `E120`–`E125`, `W210`, `W211`, `W216` | Proto-derived structure: wrong type, empty required array (spec 5.7), snake_case field (5.5), near-miss field name, non-media-type mode |
+| `E120`–`E125`, `W210`, `W211`, `W216`, `W217` | Proto-derived structure: wrong type (including inside `securitySchemes` and requirement scope lists), empty required array (spec 5.7), snake_case field (5.5), near-miss field name, non-media-type mode, scope list without `list` |
 | `S8xx` | Security lint: `S801` hidden/bidi characters, `S802` prompt-injection phrasing (heuristic), `S803` renderer-fetch markup, `S804` loopback/private/metadata URL, `S805` endpoint on a different host than the card, `S807` credentials in URL, `S808` secret-shaped text |
 | `G9xx` | Card signatures (`G902` verified, `G903` failed, `G906` `jku` ignored, `G907` algorithm refused) |
 | conformance ids | `CARD-*`, `RPC-*`, `REST-*`, `SSE-*`, `SEC-*` etc. in `conformance` output, each with a spec section |
@@ -265,12 +273,15 @@ checking the spec text (the relabeling is in the git history of `bench/cards.py`
 | | a2aops 1.2.0 (previous release) | 0.83 | 0.64 | 5 valid v1.0 cards flagged, 14 broken ones missed |
 | | official a2a-inspector `validate` v1.0.0-alpha.1 | 1.00 | 0.92 | Go package, run through a throwaway test harness |
 | | a2a-lint 0.1.1 | 0.49 | 0.97 | A2A 0.3 only: it flags every v1.0 card (no `url`) |
-| Does the conformance suite catch a broken agent? | a2aops conformance vs 32 injected faults (fault-injecting proxy in front of the strict mock) | n/a | 32 / 32 | clean agent: 0 false alarms in 49 checks (5 skipped) |
+| Does the conformance suite catch a broken agent? | a2aops conformance vs 33 injected faults (fault-injecting proxy in front of the strict mock) | n/a | 33 / 33 | clean agent: 0 false alarms in 51 checks (5 skipped) |
 | Does hostile input crash it? (seeded fuzz, 6000 mutated cards through check, diff, compat, auth, SARIF/JSON/JUnit) | `python -m bench.fuzz` | n/a | 0 crashes | 2983 inputs rejected with a clean error, 3017 processed; the two crash classes found by hand before this run (deep JSON, lone surrogates) are regression tests, not fuzz finds |
 | Right semver bump for a card change? (25 labeled pairs) | `card diff --semver` | n/a | 25 / 25 exact | "any difference is major" snapshot test: 14 / 25 |
 
-The same suite passes 42 of 49 checks against the official Python SDK
-(`a2a-sdk` 1.3.0) acting as a real v1.0 server; every MUST-level check passed.
+The same suite passes 44 of 51 checks against the official Python SDK
+(`a2a-sdk` 1.3.0) acting as a real v1.0 server (reproduce with
+`python -m bench.sdk_server`, which needs `pip install "a2a-sdk[http-server]==1.3.0" uvicorn`);
+every MUST-level check passed, 5 were skipped because the sample agent has no
+auth or push gates to test.
 The two SHOULD-level warnings were a missing `Cache-Control` on the card and
 no `application/a2a+json` content type on errors. The mutation run of the
 official a2a-tck through the same proxy did not finish in this session, so there
@@ -328,7 +339,7 @@ no install.
    structural change", not "identical".
 7. **SSRF guard limits.** The host is resolved for the check and again by the
    HTTP client to connect, so a DNS-rebinding attacker with a very short TTL can
-   race it. Use `--offline` for cards you do not trust at all. `stream` caps one SSE
+   race it. `conformance` has the same gap: it resolves an interface name once, before probing, to decide whether it points into a private network. Use `--offline` for cards you do not trust at all. `stream` caps one SSE
    line at 4 MiB (conformance: 1 MiB per line, 8 MiB per stream), so a
    legitimately larger single event is reported as a broken stream.
 8. **Signature verification is narrow.** `card verify` handles ES256/384 and
@@ -337,7 +348,7 @@ no install.
    from spec section 8.4 (RFC 8785); a2aops accepts either and says which
    matched (`G909`). It proves the card matches a key you trust, nothing about
    the operator.
-9. **Conformance is black-box and v1.0 only.** 49 checks, no gRPC, no
+9. **Conformance is black-box and v1.0 only.** 51 checks, no gRPC, no
    multi-tenant probes. The prompt-injection lint (`S802`) is a phrase
    heuristic: it will miss paraphrases and sometimes flag harmless prose.
    Subscribe uses GET then POST because the spec proto and prose disagree.
@@ -346,8 +357,9 @@ no install.
 
 ```bash
 cd a2aops
-PYTHONPATH=src python3 -m unittest discover -s tests   # 302 tests, zero deps
+PYTHONPATH=src python3 -m unittest discover -s tests   # 336 tests, zero deps
 PYTHONPATH=src python3 -m bench.fuzz 6000                # hostile-input fuzz, exit 1 on any crash
+PYTHONPATH=src python3 -m bench.mutate_source            # breaks a2aops in 29 ways; the tests must notice (about 6 min)
 python3 -m compileall -q src tests
 ```
 
@@ -355,7 +367,7 @@ Layout: `src/a2aops/` — `card.py` (fetch/validate/lint), `compat.py`,
 `authcheck.py`, `states.py` (wire-vocabulary normalization), `sse.py`,
 `tasks.py` (inspector + poll), `playground.py` (mock agents + scenarios),
 `diff.py` (breaking-change rules), `secreq.py` (security-requirement shapes),
-`report.py` (JSON/SARIF), `locate.py` (finding path to source line), `suppress.py`
+`report.py` (JSON/SARIF/JUnit), `locate.py` (finding path to source line), `suppress.py`
 (`--ignore`, baselines), `explain.py` (code catalogue), `net.py` (size caps, strict
 JSON, SSRF guard, terminal-safe output), `cli.py`, `spec.py` +
 `spec_snapshot.json` (pinned spec knowledge).

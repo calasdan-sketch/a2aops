@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites><testsuite name="a2aops card-diff tests/fixtures/card_v1_valid.json" tests="10" failures="3">
+    <properties><property name="tool" value="a2aops <VERSION> (Calas Automations Inc.)"/></properties>
+    <testcase classname="a2aops.card-diff" name="D501 supportedInterfaces"><failure type="error" message="interface removed: JSONRPC https://minimal.example.com/ — clients with this endpoint cached will fail">interface removed: JSONRPC https://minimal.example.com/ — clients with this endpoint cached will fail</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D502 skills[id=ping]"><failure type="error" message="skill removed: 'ping' — callers routing to it will fail">skill removed: 'ping' — callers routing to it will fail</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D508 securityRequirements"><failure type="error" message="agent now requires authentication — anonymous clients break">agent now requires authentication — anonymous clients break</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D604 defaultOutputModes"><system-out>warning: defaultOutputModes no longer includes ['text/plain']</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D701 supportedInterfaces"><system-out>info: interface added: JSONRPC https://hotels.example.com/a2a/v1</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D701 supportedInterfaces"><system-out>info: interface added: HTTP+JSON https://hotels.example.com/a2a/json</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D702 skills[id=search-and-book]"><system-out>info: skill added: 'search-and-book'</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D703 capabilities.streaming"><system-out>info: capability 'streaming' enabled</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D703 capabilities.pushNotifications"><system-out>info: capability 'pushNotifications' enabled</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D703 capabilities.extendedAgentCard"><system-out>info: capability 'extendedAgentCard' enabled</system-out></testcase>
+  </testsuite></testsuites>
+--- exit 1 ---

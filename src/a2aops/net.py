@@ -244,6 +244,12 @@ def _origin(url: str) -> tuple:
     return (p.scheme, (p.hostname or "").lower(), port)
 
 
+#: Optional extra check run on every redirect target by :class:`SafeRedirects`; it raises
+#: ``urllib.error.URLError`` to refuse the hop. ``conformance`` sets it for the duration of a run
+#: so a public endpoint cannot bounce a probe into the tester's private network. Single-threaded use.
+redirect_guard: Optional[Callable[[str], None]] = None
+
+
 class SafeRedirects(urllib.request.HTTPRedirectHandler):
     """Follow only http(s) redirects and never replay credentials elsewhere.
 
@@ -258,6 +264,11 @@ class SafeRedirects(urllib.request.HTTPRedirectHandler):
             raise urllib.error.HTTPError(
                 req.full_url, code, f"refusing redirect to a non-http(s) URL ({redact_url(full)})",
                 headers, fp)
+        if redirect_guard is not None:
+            try:
+                redirect_guard(full)
+            except urllib.error.URLError as e:
+                raise urllib.error.HTTPError(req.full_url, code, f"refusing redirect: {e.reason}", headers, fp) from e
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
         if new is not None and _origin(full) != _origin(req.full_url):
             new.headers = {k: v for k, v in new.headers.items() if k.lower() in _CROSS_ORIGIN_KEEP}

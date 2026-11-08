@@ -40,6 +40,7 @@ CODES: dict[str, tuple[str, str]] = {
     "W213": ("A gRPC interface url is not host:port.", "Use hostname:port without a scheme."),
     "W215": ("The card was served with a non-JSON content type.", "Serve application/json."),
     "W216": ("An extension has no uri.", "Add the uri clients use to request it via A2A-Extensions."),
+    "W217": ("A requirement's scope list has no 'list' member.", "Write {\"list\": [\"scope\"]}; as written no scopes are required."),
     "I205": ("Streaming is on but push notifications are not.", "Fine; clients behind SSE-blocking proxies must poll."),
     "I206": ("The version is not semver.", "Fine if intentional (date-based); semver enables card diff --semver."),
     "I207": ("securityRequirements uses the pre-1.0 OpenAPI shape.", "Migrate to {\"schemes\": ...}; see a2aops compat."),

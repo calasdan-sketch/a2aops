@@ -1,0 +1,477 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "a2aops",
+          "version": "<VERSION>",
+          "organization": "Calas Automations Inc.",
+          "informationUri": "https://calasautomations.com",
+          "rules": [
+            {
+              "id": "D501",
+              "name": "D501",
+              "shortDescription": {
+                "text": "interface removed: JSONRPC https://hotels.example.com/a2a/v1"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain D501` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D502",
+              "name": "D502",
+              "shortDescription": {
+                "text": "skill removed: 'search-and-book'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain D502` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D505",
+              "name": "D505",
+              "shortDescription": {
+                "text": "defaultInputModes no longer includes ['application/json']"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain D505` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D506",
+              "name": "D506",
+              "shortDescription": {
+                "text": "capability 'streaming' was turned off"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain D506` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D604",
+              "name": "D604",
+              "shortDescription": {
+                "text": "defaultOutputModes no longer includes ['application/json']"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Run `a2aops explain D604` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D605",
+              "name": "D605",
+              "shortDescription": {
+                "text": "agent: authentication requirements were removed; confirm this is intentional"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Run `a2aops explain D605` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D608",
+              "name": "D608",
+              "shortDescription": {
+                "text": "breaking changes found but major version did not increase (2.3.0 -> 0.1.0)"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Run `a2aops explain D608` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D701",
+              "name": "D701",
+              "shortDescription": {
+                "text": "interface added: JSONRPC https://minimal.example.com/"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "help": {
+                "text": "Run `a2aops explain D701` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "D702",
+              "name": "D702",
+              "shortDescription": {
+                "text": "skill added: 'ping'"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "help": {
+                "text": "Run `a2aops explain D702` for what this means and how to fix it."
+              }
+            }
+          ]
+        }
+      },
+      "automationDetails": {
+        "id": "a2aops/card-diff/"
+      },
+      "results": [
+        {
+          "ruleId": "D501",
+          "level": "error",
+          "message": {
+            "text": "interface removed: JSONRPC https://hotels.example.com/a2a/v1 \u2014 clients with this endpoint cached will fail"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "57b62cc97b6a5a07"
+          }
+        },
+        {
+          "ruleId": "D501",
+          "level": "error",
+          "message": {
+            "text": "interface removed: HTTP+JSON https://hotels.example.com/a2a/json \u2014 clients with this endpoint cached will fail"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "57b62cc97b6a5a07:1"
+          }
+        },
+        {
+          "ruleId": "D502",
+          "level": "error",
+          "message": {
+            "text": "skill removed: 'search-and-book' \u2014 callers routing to it will fail"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "skills[id=search-and-book]",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "1c4124cca6b797d5"
+          }
+        },
+        {
+          "ruleId": "D505",
+          "level": "error",
+          "message": {
+            "text": "defaultInputModes no longer includes ['application/json']"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "defaultInputModes",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "0a85f805e2355e74"
+          }
+        },
+        {
+          "ruleId": "D506",
+          "level": "error",
+          "message": {
+            "text": "capability 'streaming' was turned off \u2014 clients relying on it break"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "capabilities.streaming",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "09dff0a4ae970368"
+          }
+        },
+        {
+          "ruleId": "D506",
+          "level": "error",
+          "message": {
+            "text": "capability 'pushNotifications' was turned off \u2014 clients relying on it break"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "capabilities.pushNotifications",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "65c1b95f000ef7ef"
+          }
+        },
+        {
+          "ruleId": "D506",
+          "level": "error",
+          "message": {
+            "text": "capability 'extendedAgentCard' was turned off \u2014 clients relying on it break"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "capabilities.extendedAgentCard",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "b5aa22b59f2b949d"
+          }
+        },
+        {
+          "ruleId": "D604",
+          "level": "warning",
+          "message": {
+            "text": "defaultOutputModes no longer includes ['application/json']"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "defaultOutputModes",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "2f757259697a7323"
+          }
+        },
+        {
+          "ruleId": "D605",
+          "level": "warning",
+          "message": {
+            "text": "agent: authentication requirements were removed; confirm this is intentional"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securityRequirements",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "54f5a0cfbd9467e9"
+          }
+        },
+        {
+          "ruleId": "D608",
+          "level": "warning",
+          "message": {
+            "text": "breaking changes found but major version did not increase (2.3.0 -> 0.1.0)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "version",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "d47e1b1440a74d61"
+          }
+        },
+        {
+          "ruleId": "D701",
+          "level": "note",
+          "message": {
+            "text": "interface added: JSONRPC https://minimal.example.com/"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "7643e64ef045d570"
+          }
+        },
+        {
+          "ruleId": "D702",
+          "level": "note",
+          "message": {
+            "text": "skill added: 'ping'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_v1_minimal.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "skills[id=ping]",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "c33258d2b613b045"
+          }
+        }
+      ]
+    }
+  ]
+}
+--- exit 1 ---

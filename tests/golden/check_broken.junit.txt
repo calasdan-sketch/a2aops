@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites><testsuite name="a2aops card-check tests/fixtures/card_broken.json" tests="12" failures="11">
+    <properties><property name="tool" value="a2aops <VERSION> (Calas Automations Inc.)"/></properties>
+    <testcase classname="a2aops.card-check" name="E101 name"><failure type="error" message="missing required field 'name'">missing required field 'name'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E101 version"><failure type="error" message="missing required field 'version'">missing required field 'version'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E101 defaultOutputModes"><failure type="error" message="missing required field 'defaultOutputModes'">missing required field 'defaultOutputModes'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E104 supportedInterfaces[0].protocolVersion"><failure type="error" message="missing required field 'protocolVersion'">missing required field 'protocolVersion'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E105 supportedInterfaces[0].url"><failure type="error" message="'url' must be an absolute URL">'url' must be an absolute URL</failure></testcase>
+    <testcase classname="a2aops.card-check" name="W212 supportedInterfaces[0].protocolBinding"><system-out>warning: unknown protocolBinding 'SMOKE_SIGNALS' (standard: JSONRPC, GRPC, HTTP+JSON; custom bindings should be identified by a URI, spec 5.8)</system-out></testcase>
+    <testcase classname="a2aops.card-check" name="E104 supportedInterfaces[1].protocolBinding"><failure type="error" message="missing required field 'protocolBinding'">missing required field 'protocolBinding'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E107 capabilities"><failure type="error" message="'capabilities' must be an object">'capabilities' must be an object</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E108 defaultInputModes"><failure type="error" message="'defaultInputModes' must be a non-empty array of strings">'defaultInputModes' must be a non-empty array of strings</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E111 skills[1].tags"><failure type="error" message="missing required field 'tags'">missing required field 'tags'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E113 skills[1].id"><failure type="error" message="duplicate skill id 'dup'">duplicate skill id 'dup'</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E110 skills[2]"><failure type="error" message="skill must be an object">skill must be an object</failure></testcase>
+  </testsuite></testsuites>
+--- exit 1 ---

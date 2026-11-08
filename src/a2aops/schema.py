@@ -18,6 +18,7 @@ import difflib
 import re
 from typing import Any
 
+from . import secreq
 from .card import ERROR, WARNING, Diagnostic
 
 STR, BOOL, OBJ, ARR_STR, ARR_OBJ = "string", "boolean", "object", "array of strings", "array of objects"
@@ -44,6 +45,22 @@ SCHEMA: dict[str, dict[str, tuple[str, bool]]] = {
                    "inputModes": (ARR_STR, False), "outputModes": (ARR_STR, False),
                    "securityRequirements": (ARR_OBJ, False)},
     "AgentCardSignature": {"protected": (STR, True), "signature": (STR, True), "header": (OBJ, False)},
+}
+
+# Security-scheme tree (a.proto SecurityScheme and children), JSON names. Value is the
+# JSON type of each member; "map<string,string>" is OAuth scopes. Required-ness of these
+# members is reported by the auth-surface checks (E301/E311/E313/E331), not here.
+_SEC_KINDS: dict[str, dict[str, str]] = {
+    "apiKeySecurityScheme": {"description": STR, "location": STR, "name": STR},
+    "httpAuthSecurityScheme": {"description": STR, "scheme": STR, "bearerFormat": STR},
+    "oauth2SecurityScheme": {"description": STR, "flows": OBJ, "oauth2MetadataUrl": STR},
+    "openIdConnectSecurityScheme": {"description": STR, "openIdConnectUrl": STR},
+    "mtlsSecurityScheme": {"description": STR},
+}
+_SEC_FLOWS = ("authorizationCode", "clientCredentials", "implicit", "password", "deviceCode")
+_SEC_FLOW_FIELDS: dict[str, str] = {
+    "authorizationUrl": STR, "deviceAuthorizationUrl": STR, "tokenUrl": STR, "refreshUrl": STR,
+    "pkceRequired": BOOL, "scopes": "map<string,string>",
 }
 
 #: v0.3-era / deprecated top-level fields: reported by ``compat``, not as typos here.
@@ -84,6 +101,8 @@ def _type_ok(v: Any, t: str) -> bool:
         return isinstance(v, list) and all(isinstance(x, str) for x in v)
     if t == ARR_OBJ:
         return isinstance(v, list) and all(isinstance(x, dict) for x in v)
+    if t == "map<string,string>":
+        return isinstance(v, dict) and all(isinstance(x, str) for x in v.values())
     return True
 
 
@@ -130,7 +149,74 @@ def _check_message(msg: str, obj: dict, path: str, out: list[Diagnostic]) -> Non
 
 
 def _article(t: str) -> str:
+    if t.startswith("map<"):
+        return "an object whose values are all strings"
     return ("an " if t[0] in "aeiou" else "a ") + t
+
+
+def _typed(obj: dict, table: dict[str, str], path: str, out: list[Diagnostic]) -> None:
+    for key, t in table.items():
+        if key in obj and not _type_ok(obj[key], t):
+            got = "an object with non-string values" if t.startswith("map<") and isinstance(obj[key], dict) \
+                else _kind(obj[key])
+            out.append(Diagnostic(ERROR, "E120", f"'{key}' must be {_article(t)}, got {got}", f"{path}.{key}"))
+
+
+def _check_security_types(card: dict, out: list[Diagnostic]) -> None:
+    """Type-check securitySchemes and the ``schemes`` map of every requirement.
+
+    The official SDK's proto parser rejects these cards outright, so a card
+    that passes here but fails there would otherwise be a silent false OK.
+    Unknown scheme kinds are left to `a2aops auth` (W343).
+    """
+    schemes = card.get("securitySchemes")
+    if isinstance(schemes, dict):
+        for name, scheme in schemes.items():
+            base = f"securitySchemes.{name}"
+            if not isinstance(scheme, dict):
+                out.append(Diagnostic(ERROR, "E120", f"a security scheme must be an object, got {_kind(scheme)}",
+                                      base))
+                continue
+            for kind, fields in _SEC_KINDS.items():
+                if kind not in scheme:
+                    continue
+                inner = scheme[kind]
+                if not isinstance(inner, dict):
+                    out.append(Diagnostic(ERROR, "E120", f"'{kind}' must be an object, got {_kind(inner)}",
+                                          f"{base}.{kind}"))
+                    continue
+                _typed(inner, fields, f"{base}.{kind}", out)
+                flows = inner.get("flows") if kind == "oauth2SecurityScheme" else None
+                if isinstance(flows, dict):
+                    for fname in _SEC_FLOWS:
+                        fl = flows.get(fname)
+                        if fl is None:
+                            continue
+                        fpath = f"{base}.{kind}.flows.{fname}"
+                        if not isinstance(fl, dict):
+                            out.append(Diagnostic(ERROR, "E120", f"'{fname}' must be an object, got {_kind(fl)}",
+                                                  fpath))
+                            continue
+                        _typed(fl, _SEC_FLOW_FIELDS, fpath, out)
+    for prefix, owner in secreq.owners(card):
+        reqs = owner.get("securityRequirements")
+        if not isinstance(reqs, list):
+            continue
+        for n, entry in enumerate(reqs):
+            sch = entry.get("schemes") if isinstance(entry, dict) and set(entry) == {"schemes"} else None
+            if not isinstance(sch, dict):
+                continue
+            for sname, sl in sch.items():
+                p = f"{prefix}securityRequirements[{n}].schemes.{sname}"
+                if not isinstance(sl, dict):
+                    out.append(Diagnostic(ERROR, "E120", f"scope list must be an object like {{\"list\": [...]}}, "
+                                          f"got {_kind(sl)}", p))
+                elif sl and "list" not in sl:
+                    out.append(Diagnostic(WARNING, "W217", "scope list has no 'list' member, so no scopes are "
+                                          "required; the v1.0 shape is {\"list\": [scopes]}", p))
+                elif "list" in sl and not _type_ok(sl["list"], ARR_STR):
+                    out.append(Diagnostic(ERROR, "E120", f"'list' must be an array of strings, got "
+                                          f"{_kind(sl['list'])}", f"{p}.list"))
 
 
 def validate_structure(card: Any) -> list[Diagnostic]:
@@ -194,6 +280,7 @@ def validate_structure(card: Any) -> list[Diagnostic]:
 
     for f in ("defaultInputModes", "defaultOutputModes"):
         _media_types(card.get(f), f, out)
+    _check_security_types(card, out)
     return out
 
 

@@ -1,0 +1,2 @@
+ERROR E341 [securityRequirements[0]]: auth drift: requirement references undeclared scheme 'ghost-scheme' — clients cannot satisfy it
+--- exit 1 ---

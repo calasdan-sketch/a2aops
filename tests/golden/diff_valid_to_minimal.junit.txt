@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites><testsuite name="a2aops card-diff tests/fixtures/card_v1_minimal.json" tests="12" failures="7">
+    <properties><property name="tool" value="a2aops <VERSION> (Calas Automations Inc.)"/></properties>
+    <testcase classname="a2aops.card-diff" name="D501 supportedInterfaces"><failure type="error" message="interface removed: JSONRPC https://hotels.example.com/a2a/v1 — clients with this endpoint cached will fail">interface removed: JSONRPC https://hotels.example.com/a2a/v1 — clients with this endpoint cached will fail</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D501 supportedInterfaces"><failure type="error" message="interface removed: HTTP+JSON https://hotels.example.com/a2a/json — clients with this endpoint cached will fail">interface removed: HTTP+JSON https://hotels.example.com/a2a/json — clients with this endpoint cached will fail</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D502 skills[id=search-and-book]"><failure type="error" message="skill removed: 'search-and-book' — callers routing to it will fail">skill removed: 'search-and-book' — callers routing to it will fail</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D505 defaultInputModes"><failure type="error" message="defaultInputModes no longer includes ['application/json']">defaultInputModes no longer includes ['application/json']</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D506 capabilities.streaming"><failure type="error" message="capability 'streaming' was turned off — clients relying on it break">capability 'streaming' was turned off — clients relying on it break</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D506 capabilities.pushNotifications"><failure type="error" message="capability 'pushNotifications' was turned off — clients relying on it break">capability 'pushNotifications' was turned off — clients relying on it break</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D506 capabilities.extendedAgentCard"><failure type="error" message="capability 'extendedAgentCard' was turned off — clients relying on it break">capability 'extendedAgentCard' was turned off — clients relying on it break</failure></testcase>
+    <testcase classname="a2aops.card-diff" name="D604 defaultOutputModes"><system-out>warning: defaultOutputModes no longer includes ['application/json']</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D605 securityRequirements"><system-out>warning: agent: authentication requirements were removed; confirm this is intentional</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D608 version"><system-out>warning: breaking changes found but major version did not increase (2.3.0 -&gt; 0.1.0)</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D701 supportedInterfaces"><system-out>info: interface added: JSONRPC https://minimal.example.com/</system-out></testcase>
+    <testcase classname="a2aops.card-diff" name="D702 skills[id=ping]"><system-out>info: skill added: 'ping'</system-out></testcase>
+  </testsuite></testsuites>
+--- exit 1 ---

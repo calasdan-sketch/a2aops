@@ -1,0 +1,477 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "a2aops",
+          "version": "<VERSION>",
+          "organization": "Calas Automations Inc.",
+          "informationUri": "https://calasautomations.com",
+          "rules": [
+            {
+              "id": "E101",
+              "name": "E101",
+              "shortDescription": {
+                "text": "missing required field 'name'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E101` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E104",
+              "name": "E104",
+              "shortDescription": {
+                "text": "missing required field 'protocolVersion'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E104` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E105",
+              "name": "E105",
+              "shortDescription": {
+                "text": "'url' must be an absolute URL"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E105` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "W212",
+              "name": "W212",
+              "shortDescription": {
+                "text": "unknown protocolBinding 'SMOKE_SIGNALS' (standard: JSONRPC, GRPC, HTTP+JSON; custom bindings should be identified by a URI, spec 5.8)"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Run `a2aops explain W212` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E107",
+              "name": "E107",
+              "shortDescription": {
+                "text": "'capabilities' must be an object"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E107` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E108",
+              "name": "E108",
+              "shortDescription": {
+                "text": "'defaultInputModes' must be a non-empty array of strings"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E108` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E111",
+              "name": "E111",
+              "shortDescription": {
+                "text": "missing required field 'tags'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E111` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E113",
+              "name": "E113",
+              "shortDescription": {
+                "text": "duplicate skill id 'dup'"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E113` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "E110",
+              "name": "E110",
+              "shortDescription": {
+                "text": "skill must be an object"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E110` for what this means and how to fix it."
+              }
+            }
+          ]
+        }
+      },
+      "automationDetails": {
+        "id": "a2aops/card-check/"
+      },
+      "results": [
+        {
+          "ruleId": "E101",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'name'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "name",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "e4fb03df4e285a7c"
+          }
+        },
+        {
+          "ruleId": "E101",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'version'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "version",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "c2ad58f50cbcc622"
+          }
+        },
+        {
+          "ruleId": "E101",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'defaultOutputModes'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "defaultOutputModes",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "abfd643a42066401"
+          }
+        },
+        {
+          "ruleId": "E104",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'protocolVersion'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces[0].protocolVersion",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "489fd8b27453be57"
+          }
+        },
+        {
+          "ruleId": "E105",
+          "level": "error",
+          "message": {
+            "text": "'url' must be an absolute URL"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces[0].url",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "ddcb99cbbb25421a"
+          }
+        },
+        {
+          "ruleId": "W212",
+          "level": "warning",
+          "message": {
+            "text": "unknown protocolBinding 'SMOKE_SIGNALS' (standard: JSONRPC, GRPC, HTTP+JSON; custom bindings should be identified by a URI, spec 5.8)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces[0].protocolBinding",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "1346786ea0e9bfdb"
+          }
+        },
+        {
+          "ruleId": "E104",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'protocolBinding'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "supportedInterfaces[1].protocolBinding",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "a9b4ac749dff41a7"
+          }
+        },
+        {
+          "ruleId": "E107",
+          "level": "error",
+          "message": {
+            "text": "'capabilities' must be an object"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "capabilities",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "f486dd99bfdce53f"
+          }
+        },
+        {
+          "ruleId": "E108",
+          "level": "error",
+          "message": {
+            "text": "'defaultInputModes' must be a non-empty array of strings"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "defaultInputModes",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "2331c19adcb9746a"
+          }
+        },
+        {
+          "ruleId": "E111",
+          "level": "error",
+          "message": {
+            "text": "missing required field 'tags'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "skills[1].tags",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "de91b35158173ae8"
+          }
+        },
+        {
+          "ruleId": "E113",
+          "level": "error",
+          "message": {
+            "text": "duplicate skill id 'dup'"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "skills[1].id",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "f98681d3075b92ef"
+          }
+        },
+        {
+          "ruleId": "E110",
+          "level": "error",
+          "message": {
+            "text": "skill must be an object"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_broken.json"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "skills[2]",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "2e751e2d71318521"
+          }
+        }
+      ]
+    }
+  ]
+}
+--- exit 1 ---

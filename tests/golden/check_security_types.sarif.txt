@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "a2aops",
+          "version": "<VERSION>",
+          "organization": "Calas Automations Inc.",
+          "informationUri": "https://calasautomations.com",
+          "rules": [
+            {
+              "id": "E120",
+              "name": "E120",
+              "shortDescription": {
+                "text": "'openIdConnectUrl' must be a string, got array containing string"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Run `a2aops explain E120` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "W217",
+              "name": "W217",
+              "shortDescription": {
+                "text": "scope list has no 'list' member, so no scopes are required; the v1.0 shape is {\"list\": [scopes]}"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Run `a2aops explain W217` for what this means and how to fix it."
+              }
+            },
+            {
+              "id": "W202",
+              "name": "W202",
+              "shortDescription": {
+                "text": "security scheme 'broken' is declared but never required"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Run `a2aops explain W202` for what this means and how to fix it."
+              }
+            }
+          ]
+        }
+      },
+      "automationDetails": {
+        "id": "a2aops/card-check/"
+      },
+      "results": [
+        {
+          "ruleId": "E120",
+          "level": "error",
+          "message": {
+            "text": "'openIdConnectUrl' must be a string, got array containing string"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 41
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securitySchemes.oidc.openIdConnectSecurityScheme.openIdConnectUrl",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "25e46079ffdd1b45"
+          }
+        },
+        {
+          "ruleId": "E120",
+          "level": "error",
+          "message": {
+            "text": "'name' must be a string, got number"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 49
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securitySchemes.key.apiKeySecurityScheme.name",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "7453528dee54028c"
+          }
+        },
+        {
+          "ruleId": "E120",
+          "level": "error",
+          "message": {
+            "text": "'scopes' must be an object whose values are all strings, got an object with non-string values"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 57
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securitySchemes.oauth.oauth2SecurityScheme.flows.clientCredentials.scopes",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "2948046e3089b276"
+          }
+        },
+        {
+          "ruleId": "E120",
+          "level": "error",
+          "message": {
+            "text": "a security scheme must be an object, got string"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 66
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securitySchemes.broken",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "b4699cfc6b9f9878"
+          }
+        },
+        {
+          "ruleId": "E120",
+          "level": "error",
+          "message": {
+            "text": "'list' must be an array of strings, got string"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 25
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securityRequirements[0].schemes.oidc.list",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "9ef975ba7623cb7a"
+          }
+        },
+        {
+          "ruleId": "W217",
+          "level": "warning",
+          "message": {
+            "text": "scope list has no 'list' member, so no scopes are required; the v1.0 shape is {\"list\": [scopes]}"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 27
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securityRequirements[0].schemes.key",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "f69ef5e8c0d81490"
+          }
+        },
+        {
+          "ruleId": "E120",
+          "level": "error",
+          "message": {
+            "text": "scope list must be an object like {\"list\": [...]}, got array containing string"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 32
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securityRequirements[0].schemes.oauth",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "02a32f06b35a0d6f"
+          }
+        },
+        {
+          "ruleId": "W202",
+          "level": "warning",
+          "message": {
+            "text": "security scheme 'broken' is declared but never required \u2014 clients will not send credentials for it"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/fixtures/card_bad_security_types.json"
+                },
+                "region": {
+                  "startLine": 66
+                }
+              },
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "securitySchemes.broken",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "a2aopsFinding/v1": "0f9e2ef6c1bc8129"
+          }
+        }
+      ]
+    }
+  ]
+}
+--- exit 1 ---

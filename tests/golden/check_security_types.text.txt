@@ -1,0 +1,10 @@
+read <FIX>/card_bad_security_types.json
+ERROR E120 [securitySchemes.oidc.openIdConnectSecurityScheme.openIdConnectUrl]: 'openIdConnectUrl' must be a string, got array containing string
+ERROR E120 [securitySchemes.key.apiKeySecurityScheme.name]: 'name' must be a string, got number
+ERROR E120 [securitySchemes.oauth.oauth2SecurityScheme.flows.clientCredentials.scopes]: 'scopes' must be an object whose values are all strings, got an object with non-string values
+ERROR E120 [securitySchemes.broken]: a security scheme must be an object, got string
+ERROR E120 [securityRequirements[0].schemes.oidc.list]: 'list' must be an array of strings, got string
+WARNING W217 [securityRequirements[0].schemes.key]: scope list has no 'list' member, so no scopes are required; the v1.0 shape is {"list": [scopes]}
+ERROR E120 [securityRequirements[0].schemes.oauth]: scope list must be an object like {"list": [...]}, got array containing string
+WARNING W202 [securitySchemes.broken]: security scheme 'broken' is declared but never required — clients will not send credentials for it
+--- exit 1 ---

@@ -114,6 +114,13 @@ def no_errorinfo(req, resp):
     _walk_json(resp, f)
 
 
+def cors_reflect(req, resp):
+    origin = req.headers.get("Origin") or req.headers.get("origin")
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+
+
 def wrong_notfound_code(req, resp):
     o = resp.json()
     if isinstance(o, dict) and isinstance(o.get("error"), dict) and o["error"].get("code") == -32001:
@@ -342,6 +349,7 @@ def card_wrong_path_name(req, resp):
 
 MUTANTS: list[Mutant] = [
     Mutant("no-errorinfo", "errors carry no google.rpc.ErrorInfo", {"RPC-08", "REST-04", "REST-05"}, post=no_errorinfo),
+    Mutant("cors-reflect-credentials", "any Origin is echoed with Allow-Credentials: true", {"RPC-30", "REST-30"}, post=cors_reflect),
     Mutant("wrong-notfound-code", "TaskNotFound uses -32000", {"RPC-07", "RPC-09"}, post=wrong_notfound_code),
     Mutant("rest-notfound-200", "unknown task returns HTTP 200 {}", {"REST-04"}, post=rest_notfound_200),
     Mutant("rest-error-500", "unknown task returns HTTP 500", {"REST-04", "REST-05"}, post=rest_error_500),

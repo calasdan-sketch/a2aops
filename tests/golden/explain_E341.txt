@@ -1,0 +1,4 @@
+E341
+  meaning: A requirement names a scheme that is not declared.
+  fix:     Declare it in securitySchemes or remove the requirement.
+--- exit 0 ---

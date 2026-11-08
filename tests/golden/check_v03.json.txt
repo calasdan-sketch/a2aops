@@ -1,0 +1,35 @@
+{
+  "tool": "a2aops",
+  "version": "<VERSION>",
+  "command": "card-check",
+  "source": "tests/fixtures/card_v03.json",
+  "strict": false,
+  "ok": false,
+  "counts": {
+    "error": 2,
+    "warning": 0,
+    "info": 1
+  },
+  "findings": [
+    {
+      "severity": "error",
+      "code": "E101",
+      "message": "missing required field 'supportedInterfaces'",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "error",
+      "code": "E111",
+      "message": "missing required field 'tags'",
+      "path": "skills[0].tags"
+    },
+    {
+      "severity": "info",
+      "code": "I205",
+      "message": "streaming is enabled but pushNotifications is not; clients behind SSE-blocking proxies will need polling fallback",
+      "path": "capabilities"
+    }
+  ],
+  "suppressed": 0
+}
+--- exit 1 ---

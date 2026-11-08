@@ -1,0 +1,4 @@
+W217
+  meaning: A requirement's scope list has no 'list' member.
+  fix:     Write {"list": ["scope"]}; as written no scopes are required.
+--- exit 0 ---

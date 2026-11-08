@@ -1,0 +1,12 @@
+diff <FIX>/card_v1_minimal.json -> <FIX>/card_v1_valid.json
+ERROR D501 [supportedInterfaces]: interface removed: JSONRPC https://minimal.example.com/ — clients with this endpoint cached will fail
+ERROR D502 [skills[id=ping]]: skill removed: 'ping' — callers routing to it will fail
+ERROR D508 [securityRequirements]: agent now requires authentication — anonymous clients break
+WARNING D604 [defaultOutputModes]: defaultOutputModes no longer includes ['text/plain']
+INFO D701 [supportedInterfaces]: interface added: JSONRPC https://hotels.example.com/a2a/v1
+INFO D701 [supportedInterfaces]: interface added: HTTP+JSON https://hotels.example.com/a2a/json
+INFO D702 [skills[id=search-and-book]]: skill added: 'search-and-book'
+INFO D703 [capabilities.streaming]: capability 'streaming' enabled
+INFO D703 [capabilities.pushNotifications]: capability 'pushNotifications' enabled
+INFO D703 [capabilities.extendedAgentCard]: capability 'extendedAgentCard' enabled
+--- exit 1 ---

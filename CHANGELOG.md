@@ -2,6 +2,26 @@
 
 ## 1.3.0 — unreleased
 
+### Round 5 (field experts: A2A SDK maintainer, AppSec, conformance tester, QA methodology, release manager)
+
+Findings, proving commands and the scored idea list are in `docs/ROUND5.md`; release steps in `PUBLISH-CHECKLIST.md`. Tests: `tests/test_round5.py`.
+
+**Behaviour changes to know about (both can turn a green run red)**
+- `conformance` no longer probes card interfaces that point at loopback, private or cloud-metadata addresses when the card itself was fetched from a public host. They are listed as "not probed" and the checks that needed them are skipped. Before, a hostile card could make the tester POST to `http://169.254.169.254/...` or to an internal admin port (22 requests in the reproduction, including one real `SendMessage` with `--active`). The same guard applies to every redirect a probe meets (a public endpoint answering `307 -> http://localhost:PORT/` would otherwise bounce a GET probe inward). Pass `--allow-private-endpoints` to restore the old behaviour; testing a local URL is unaffected.
+- `card check` now type-checks `securitySchemes` and the scope lists in `securityRequirements` (new `E120` paths such as `securitySchemes.key.apiKeySecurityScheme.name`, new warning `W217`). The official SDK's parser rejects these cards; before, a2aops said "OK". Found by differential testing against `a2a-sdk` 1.3.0: of 3083 mutated cards the SDK refused, a2aops showed no error on 431 before and 40 after (the rest are unknown fields, which never fail by design).
+
+**Fixed**
+- `card diff` crashed with `TypeError: unhashable type` when an extension's `uri` was an object or an array (found by the new property tests; the earlier 6000-input fuzz did not reach it).
+- SARIF no longer links to a GitHub repository whose visibility is not ours to claim: `informationUri` is the product site, each rule's help text says `a2aops explain CODE`.
+
+**Added**
+- `--output FILE` for `card check|diff|verify` and `conformance`: UTF-8, LF, no BOM, written via a temp file, exit code unchanged, nothing written if the run itself failed (exit 2). PowerShell 5 `>` writes UTF-16, which GitHub's SARIF upload rejects.
+- Conformance `RPC-30` / `REST-30` (SHOULD, not in the A2A spec): the endpoint must not echo an arbitrary `Origin` together with `Access-Control-Allow-Credentials: true`. 49 -> 51 checks; a matching injected fault (33 total).
+- Author line "Calas Automations Inc." in `__author__`, `--help` footer, SARIF `tool.driver.organization` and the JUnit properties; a test pins it everywhere.
+- `bench/mutate_source.py` (breaks a2aops itself in 29 ways and requires the tests to notice), `bench/sdk_server.py` (the official SDK as a live v1.0 server, so the "44 of 51" claim is reproducible), golden-file tests for every output format, seeded property tests.
+
+**Tests** 302 -> 336. Benchmarks: see `bench/RESULTS.json`.
+
 ### Round 4 (the first hour after `pip install`)
 
 Panel notes and the scored idea list are in `docs/ROUND4.md`; release steps in `PUBLISH-CHECKLIST.md`. Regression tests: `tests/test_round4.py`.

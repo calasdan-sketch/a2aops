@@ -1,0 +1,65 @@
+{
+  "tool": "a2aops",
+  "version": "<VERSION>",
+  "command": "card-check",
+  "source": "tests/fixtures/card_bad_security_types.json",
+  "strict": false,
+  "ok": false,
+  "counts": {
+    "error": 6,
+    "warning": 2,
+    "info": 0
+  },
+  "findings": [
+    {
+      "severity": "error",
+      "code": "E120",
+      "message": "'openIdConnectUrl' must be a string, got array containing string",
+      "path": "securitySchemes.oidc.openIdConnectSecurityScheme.openIdConnectUrl"
+    },
+    {
+      "severity": "error",
+      "code": "E120",
+      "message": "'name' must be a string, got number",
+      "path": "securitySchemes.key.apiKeySecurityScheme.name"
+    },
+    {
+      "severity": "error",
+      "code": "E120",
+      "message": "'scopes' must be an object whose values are all strings, got an object with non-string values",
+      "path": "securitySchemes.oauth.oauth2SecurityScheme.flows.clientCredentials.scopes"
+    },
+    {
+      "severity": "error",
+      "code": "E120",
+      "message": "a security scheme must be an object, got string",
+      "path": "securitySchemes.broken"
+    },
+    {
+      "severity": "error",
+      "code": "E120",
+      "message": "'list' must be an array of strings, got string",
+      "path": "securityRequirements[0].schemes.oidc.list"
+    },
+    {
+      "severity": "warning",
+      "code": "W217",
+      "message": "scope list has no 'list' member, so no scopes are required; the v1.0 shape is {\"list\": [scopes]}",
+      "path": "securityRequirements[0].schemes.key"
+    },
+    {
+      "severity": "error",
+      "code": "E120",
+      "message": "scope list must be an object like {\"list\": [...]}, got array containing string",
+      "path": "securityRequirements[0].schemes.oauth"
+    },
+    {
+      "severity": "warning",
+      "code": "W202",
+      "message": "security scheme 'broken' is declared but never required \u2014 clients will not send credentials for it",
+      "path": "securitySchemes.broken"
+    }
+  ],
+  "suppressed": 0
+}
+--- exit 1 ---

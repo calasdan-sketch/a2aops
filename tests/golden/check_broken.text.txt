@@ -1,0 +1,14 @@
+read <FIX>/card_broken.json
+ERROR E101 [name]: missing required field 'name'
+ERROR E101 [version]: missing required field 'version'
+ERROR E101 [defaultOutputModes]: missing required field 'defaultOutputModes'
+ERROR E104 [supportedInterfaces[0].protocolVersion]: missing required field 'protocolVersion'
+ERROR E105 [supportedInterfaces[0].url]: 'url' must be an absolute URL
+WARNING W212 [supportedInterfaces[0].protocolBinding]: unknown protocolBinding 'SMOKE_SIGNALS' (standard: JSONRPC, GRPC, HTTP+JSON; custom bindings should be identified by a URI, spec 5.8)
+ERROR E104 [supportedInterfaces[1].protocolBinding]: missing required field 'protocolBinding'
+ERROR E107 [capabilities]: 'capabilities' must be an object
+ERROR E108 [defaultInputModes]: 'defaultInputModes' must be a non-empty array of strings
+ERROR E111 [skills[1].tags]: missing required field 'tags'
+ERROR E113 [skills[1].id]: duplicate skill id 'dup'
+ERROR E110 [skills[2]]: skill must be an object
+--- exit 1 ---

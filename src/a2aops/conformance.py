@@ -18,6 +18,9 @@ Safety
   or spend model tokens. ``--active`` adds ``SendMessage`` /
   ``SendStreamingMessage`` / ``GetTask`` / ``CancelTask`` / ``SubscribeToTask``
   probes, which create a real task on the agent (a harmless text message).
+* A card served from a public host cannot aim the probes at your own network: interfaces
+  that resolve to loopback/private/metadata addresses are not probed unless you pass
+  ``--allow-private-endpoints`` (or the URL you gave is itself local).
 * Credentials you pass with ``--header`` are sent only to the interface URLs
   the card declares **on the same host as the URL you gave**, and are never
   printed. The "is auth enforced" probe deliberately sends *no* credentials.
@@ -30,6 +33,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import urllib.error
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -111,7 +115,9 @@ def check(id: str, title: str, level: str, spec: str, group: str, active: bool =
 class Ctx:
     def __init__(self, base: str, *, timeout: float = 10.0, active: bool = False,
                  headers: Optional[dict] = None, card_path: Optional[str] = None,
-                 bindings: Optional[set] = None):
+                 bindings: Optional[set] = None, allow_private_endpoints: bool = False):
+        self.allow_private_endpoints = allow_private_endpoints
+        self.refused: list[str] = []      # interface URLs not probed because they point into a private network
         self.base = base.rstrip("/")
         if "://" not in self.base:
             self.base = "https://" + self.base
@@ -624,6 +630,29 @@ def s_states(ctx: Ctx):
             require(obj.get("taskId") and obj.get("contextId"), "statusUpdate lacks taskId/contextId (REQUIRED)")
 
 
+_PROBE_ORIGIN = "https://a2aops-probe.invalid"
+
+
+def _cors_reflection(headers: dict) -> str:
+    """Non-empty explanation when a response lets any web page read it with the visitor's cookies."""
+    acao = headers.get("access-control-allow-origin", "")
+    acac = headers.get("access-control-allow-credentials", "").strip().lower()
+    if acac == "true" and acao.strip() == _PROBE_ORIGIN:
+        return "Access-Control-Allow-Origin echoes an arbitrary Origin together with Allow-Credentials: true"
+    return ""
+
+
+@check("RPC-30", "JSON-RPC endpoint does not reflect an arbitrary Origin with credentials (browser safety)", SHOULD,
+       "not in the A2A spec; Fetch standard CORS", "jsonrpc")
+def r_cors(ctx: Ctx):
+    url = ctx.jsonrpc["url"]
+    h = wire.http_request("POST", url, b"{}", wire.default_headers(wire.A2A_VERSION, extra={"Origin": _PROBE_ORIGIN}),
+                          ctx.timeout)
+    require(not h.error, f"request failed: {h.error}")
+    why = _cors_reflection(h.headers)
+    require(not why, why + "; any web page could call this agent as the signed-in visitor")
+
+
 # ============================================================ REST ==========
 
 @check("REST-01", "Invalid JSON to POST /message:send yields HTTP 400", MUST, "11.6", "rest")
@@ -780,9 +809,45 @@ def s_rest_stream(ctx: Ctx):
     return f"{cap.raw_events} events"
 
 
+@check("REST-30", "HTTP+JSON endpoint does not reflect an arbitrary Origin with credentials (browser safety)", SHOULD,
+       "not in the A2A spec; Fetch standard CORS", "rest")
+def h_cors(ctx: Ctx):
+    url = ctx.rest_url() + "/message:send"
+    h = wire.http_request("POST", url, b"{}", wire.default_headers(wire.A2A_VERSION, rest=True,
+                                                                   extra={"Origin": _PROBE_ORIGIN}), ctx.timeout)
+    require(not h.error, f"request failed: {h.error}")
+    why = _cors_reflection(h.headers)
+    require(not why, why + "; any web page could call this agent as the signed-in visitor")
+
+
 # --------------------------------------------------------------------------
 # Runner
 # --------------------------------------------------------------------------
+
+def _points_inward(ctx: Ctx, url: str) -> bool:
+    """True when a card served from a public host sends probes to a private/metadata address.
+
+    A hostile card could otherwise turn ``conformance`` into a request cannon aimed at the
+    tester's own network (``http://169.254.169.254/...``). Interfaces on the very host you
+    asked about, and any card you fetched from a local address yourself, are left alone.
+    Names are resolved once here; a name that re-resolves later (DNS rebinding) is not caught.
+    """
+    from . import net
+    from .cardsec import classify_host
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    if not host or host == ctx._host or ctx.allow_private_endpoints or _is_local(ctx.base):
+        return False
+    if classify_host(host) != "public-or-name":
+        return True
+    try:
+        addrs = net._default_resolver(host)
+    except (OSError, UnicodeError):
+        return False          # cannot resolve: the probe itself will fail harmlessly
+    try:
+        return any(not net._is_public_ip(a) for a in addrs)
+    except ValueError:
+        return True
+
 
 def _select_interfaces(ctx: Ctx) -> None:
     ifaces = ctx.card.get("supportedInterfaces") if isinstance(ctx.card, dict) else None
@@ -793,6 +858,9 @@ def _select_interfaces(ctx: Ctx) -> None:
             continue
         ver = str(i.get("protocolVersion", ""))
         if not (ver == "1" or ver.startswith("1.")):
+            continue
+        if i.get("protocolBinding") in ("JSONRPC", "HTTP+JSON") and _points_inward(ctx, i["url"]):
+            ctx.refused.append(clean(i["url"])[:120])
             continue
         if i.get("protocolBinding") == "JSONRPC" and ctx.jsonrpc is None:
             ctx.jsonrpc = i
@@ -816,10 +884,33 @@ def load_card_into(ctx: Ctx) -> None:
             break
 
 
+def _refused_note(ctx: Ctx) -> str:
+    if not ctx.refused:
+        return ""
+    return (f" (not probed, points into a private network: {', '.join(ctx.refused[:2])}; "
+            "use --allow-private-endpoints if you trust this card)")
+
+
 def run(base: str, *, active: bool = False, timeout: float = 10.0, headers: Optional[dict] = None,
         card_path: Optional[str] = None, bindings: Optional[set] = None,
-        only_ids: Optional[set] = None, skip_ids: Optional[set] = None) -> tuple[Ctx, list[Result]]:
-    ctx = Ctx(base, timeout=timeout, active=active, headers=headers, card_path=card_path, bindings=bindings)
+        only_ids: Optional[set] = None, skip_ids: Optional[set] = None,
+        allow_private_endpoints: bool = False) -> tuple[Ctx, list[Result]]:
+    ctx = Ctx(base, timeout=timeout, active=active, headers=headers, card_path=card_path, bindings=bindings,
+              allow_private_endpoints=allow_private_endpoints)
+    from . import net
+
+    def guard(url: str) -> None:           # a redirect is a second chance to reach a private address
+        if _points_inward(ctx, url):
+            raise urllib.error.URLError("the redirect leads into a private network "
+                                        "(use --allow-private-endpoints to follow it)")
+    net.redirect_guard = guard
+    try:
+        return _run(ctx, active, only_ids, skip_ids)
+    finally:
+        net.redirect_guard = None
+
+
+def _run(ctx: Ctx, active: bool, only_ids: Optional[set], skip_ids: Optional[set]) -> tuple[Ctx, list[Result]]:
     load_card_into(ctx)
     _select_interfaces(ctx)
     results: list[Result] = []
@@ -832,10 +923,10 @@ def run(base: str, *, active: bool = False, timeout: float = 10.0, headers: Opti
         t0 = time.monotonic()
         status, detail = PASS, ""
         if c.group in ("jsonrpc", "sse") and c.id.startswith(("RPC", "SSE-0")) and ctx.jsonrpc is None and card_ok:
-            status, detail = SKIP, "no JSONRPC 1.x interface in the card"
+            status, detail = SKIP, "no JSONRPC 1.x interface in the card" + _refused_note(ctx)
         elif c.group == "rest" or c.id.startswith("SSE-1"):
             if ctx.rest is None and card_ok:
-                status, detail = SKIP, "no HTTP+JSON 1.x interface in the card"
+                status, detail = SKIP, "no HTTP+JSON 1.x interface in the card" + _refused_note(ctx)
         if status == PASS and not card_ok and c.group != "card":
             status, detail = SKIP, "no usable AgentCard"
         if status == PASS and c.active and not active:

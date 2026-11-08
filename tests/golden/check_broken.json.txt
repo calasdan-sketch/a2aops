@@ -1,0 +1,89 @@
+{
+  "tool": "a2aops",
+  "version": "<VERSION>",
+  "command": "card-check",
+  "source": "tests/fixtures/card_broken.json",
+  "strict": false,
+  "ok": false,
+  "counts": {
+    "error": 11,
+    "warning": 1,
+    "info": 0
+  },
+  "findings": [
+    {
+      "severity": "error",
+      "code": "E101",
+      "message": "missing required field 'name'",
+      "path": "name"
+    },
+    {
+      "severity": "error",
+      "code": "E101",
+      "message": "missing required field 'version'",
+      "path": "version"
+    },
+    {
+      "severity": "error",
+      "code": "E101",
+      "message": "missing required field 'defaultOutputModes'",
+      "path": "defaultOutputModes"
+    },
+    {
+      "severity": "error",
+      "code": "E104",
+      "message": "missing required field 'protocolVersion'",
+      "path": "supportedInterfaces[0].protocolVersion"
+    },
+    {
+      "severity": "error",
+      "code": "E105",
+      "message": "'url' must be an absolute URL",
+      "path": "supportedInterfaces[0].url"
+    },
+    {
+      "severity": "warning",
+      "code": "W212",
+      "message": "unknown protocolBinding 'SMOKE_SIGNALS' (standard: JSONRPC, GRPC, HTTP+JSON; custom bindings should be identified by a URI, spec 5.8)",
+      "path": "supportedInterfaces[0].protocolBinding"
+    },
+    {
+      "severity": "error",
+      "code": "E104",
+      "message": "missing required field 'protocolBinding'",
+      "path": "supportedInterfaces[1].protocolBinding"
+    },
+    {
+      "severity": "error",
+      "code": "E107",
+      "message": "'capabilities' must be an object",
+      "path": "capabilities"
+    },
+    {
+      "severity": "error",
+      "code": "E108",
+      "message": "'defaultInputModes' must be a non-empty array of strings",
+      "path": "defaultInputModes"
+    },
+    {
+      "severity": "error",
+      "code": "E111",
+      "message": "missing required field 'tags'",
+      "path": "skills[1].tags"
+    },
+    {
+      "severity": "error",
+      "code": "E113",
+      "message": "duplicate skill id 'dup'",
+      "path": "skills[1].id"
+    },
+    {
+      "severity": "error",
+      "code": "E110",
+      "message": "skill must be an object",
+      "path": "skills[2]"
+    }
+  ],
+  "suppressed": 0
+}
+--- exit 1 ---

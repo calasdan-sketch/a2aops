@@ -19,14 +19,14 @@ import urllib.parse
 from pathlib import Path, PurePath, PureWindowsPath
 from typing import Iterable, Optional
 
-from . import __version__
+from . import __author__, __version__
 from .card import ERROR, INFO, WARNING, Diagnostic
 from .locate import LineIndex
 from .suppress import fingerprint
 
 _SARIF_LEVEL = {ERROR: "error", WARNING: "warning", INFO: "note"}
 _SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
-_INFO_URI = "https://github.com/calasdan-sketch/a2aops"
+_INFO_URI = "https://calasautomations.com"   # the only project URL we publish; repo visibility is not ours to assume
 
 
 def failed(diags: Iterable[Diagnostic], strict: bool = False) -> bool:
@@ -120,7 +120,7 @@ def to_sarif(diags: list[Diagnostic], *, command: str, artifact_uri: str,
             "name": d.code,
             "shortDescription": {"text": d.message.split(" — ")[0][:200]},
             "defaultConfiguration": {"level": _SARIF_LEVEL.get(d.severity, "note")},
-            "helpUri": _INFO_URI + "#diagnostic-codes",
+            "help": {"text": f"Run `a2aops explain {d.code}` for what this means and how to fix it."},
         })
         loc = {
             "physicalLocation": {
@@ -143,7 +143,7 @@ def to_sarif(diags: list[Diagnostic], *, command: str, artifact_uri: str,
         "version": "2.1.0",
         "runs": [{
             "tool": {"driver": {
-                "name": "a2aops", "version": __version__,
+                "name": "a2aops", "version": __version__, "organization": __author__,
                 "informationUri": _INFO_URI, "rules": list(rules.values()),
             }},
             "automationDetails": {"id": f"a2aops/{command}/"},
@@ -175,4 +175,6 @@ def to_junit(diags: list[Diagnostic], *, command: str, source: str, strict: bool
     fails = sum(1 for d in diags if d.severity in bad)
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<testsuites><testsuite name={quoteattr("a2aops " + command + " " + source)} '
-            f'tests="{len(cases)}" failures="{fails}">\n' + "\n".join(cases) + '\n  </testsuite></testsuites>')
+            f'tests="{len(cases)}" failures="{fails}">\n'
+            f'    <properties><property name="tool" value={quoteattr(f"a2aops {__version__} ({__author__})")}/></properties>\n'
+            + "\n".join(cases) + '\n  </testsuite></testsuites>')

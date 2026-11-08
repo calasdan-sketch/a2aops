@@ -1,0 +1,8 @@
+a2aops <VERSION> — spec snapshot v1.0.0
+detected card version: 0.x
+[•] discovery-path: card was supplied directly; v1.0 discovery path is /.well-known/agent-card.json
+[✗] supported-interfaces: card uses the pre-1.0 'url'/'preferredTransport' shape; migrate to 'supportedInterfaces' (ordered, first = preferred; each entry: url, protocolBinding, protocolVersion)
+[✗] skill-tags: skill(s) ['old-skill'] lack 'tags' (mandatory since v1.0; routers match on them)
+[•] state-vocabulary: wire task states are SCREAMING_SNAKE_CASE TASK_STATE_* in v1.0; normalize v0.x lowercase strings (submitted, input-required, ...) at the client edge. The v0.x 'unknown' state was removed — treat TASK_STATE_UNSPECIFIED as a protocol violation.
+[•] security-model: no auth declared; fine for public agents
+--- exit 1 ---

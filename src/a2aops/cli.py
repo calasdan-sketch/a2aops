@@ -22,7 +22,7 @@ import os
 import sys
 import urllib.parse
 
-from . import __version__
+from . import __author__, __version__
 from . import authcheck as auth_mod
 from . import compat as compat_mod
 from . import sse as sse_mod
@@ -233,12 +233,15 @@ def cmd_conformance(args) -> int:
         return _err("--only and --skip together leave no checks to run")
     ctx, results = conf.run(args.url, active=args.active, timeout=args.timeout, headers=headers,
                             card_path=args.card_path, bindings=bindings,
+                            allow_private_endpoints=args.allow_private_endpoints,
                             only_ids=chosen["only"] or None, skip_ids=chosen["skip"] or None)
     if ctx.card_http is not None and ctx.card_http.error:
         return _err(f"cannot reach {ctx.card_url}: {ctx.card_http.error}")
     for b in sorted(bindings or ()):
         if isinstance(ctx.card, dict) and getattr(ctx, "jsonrpc" if b == "jsonrpc" else "rest", None) is None:
-            return _err(f"--binding {b}: the card offers no usable {b} v1.x interface, so nothing would be tested")
+            why = (f" (not probed, points into a private network: {', '.join(ctx.refused[:2])}; "
+                   "pass --allow-private-endpoints if you trust this card)") if ctx.refused else ""
+            return _err(f"--binding {b}: the card offers no usable {b} v1.x interface, so nothing would be tested{why}")
     if results and all(r.status == conf.SKIP for r in results):
         return _err("every check was skipped, so nothing was verified (use --active, or check --binding/--only)")
     fmt = args.format
@@ -385,10 +388,34 @@ def cmd_play_run(args) -> int:
     return 0
 
 
+_OUTPUT_HELP = ("write the report to FILE (UTF-8, no BOM, LF line ends) instead of stdout; "
+                "the exit code is unchanged, and nothing is written when the run itself fails (exit 2)")
+
+
+def _write_report(path: str, text: str) -> None:
+    """Write ``text`` to ``path`` as UTF-8 without BOM, via a temp file so a crash cannot leave half a report."""
+    data = text.replace("\r\n", "\n").encode("utf-8", "backslashreplace")
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        try:
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, path)
+        except OSError:
+            with open(path, "wb") as f:      # rename refused (Windows, some shares): write in place
+                f.write(data)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="a2aops",
                                 description="Operational toolkit for the A2A protocol "
-                                            f"(spec snapshot v{spec_version()}). Zero dependencies.")
+                                            f"(spec snapshot v{spec_version()}). Zero dependencies.",
+                                epilog=f"a2aops {__version__} by {__author__}. MIT licence.")
     p.add_argument("--version", action="version", version=f"a2aops {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -413,6 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
                         default="text", help="output format (sarif = GitHub code scanning, junit = CI test report)")
         if sarif:
             sp.add_argument("--strict", action="store_true", help="warnings also fail (exit 1)")
+        sp.add_argument("--output", metavar="FILE", help=_OUTPUT_HELP)
 
     cc = csub.add_parser("check", help="validate and lint a card (URL, file, or stdin)")
     cc.add_argument("base", metavar="source", help=src_help)
@@ -503,6 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
     cf2.add_argument("--active", action="store_true",
                      help="also run probes that create a task (sends one harmless text message)")
     cf2.add_argument("--format", choices=["text", "json", "junit", "sarif"], default="text")
+    cf2.add_argument("--output", metavar="FILE", help=_OUTPUT_HELP)
     cf2.add_argument("--strict", action="store_true", help="SHOULD-level failures (warnings) also fail")
     cf2.add_argument("--header", action="append", metavar="'Name: value'",
                      help="extra request header, e.g. Authorization (sent only to the card's own host; never printed)")
@@ -510,6 +539,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="test only this binding (repeatable; default: all offered)")
     cf2.add_argument("--only", action="append", metavar="ID", help="run only this check id (repeatable; unknown ids are an error)")
     cf2.add_argument("--skip", action="append", metavar="ID", help="do not run this check id (repeatable; unknown ids are an error)")
+    cf2.add_argument("--allow-private-endpoints", action="store_true",
+                     help="also probe card interfaces that point at loopback/private/metadata addresses "
+                          "(refused by default when the card itself comes from a public host)")
     cf2.add_argument("--timeout", type=_pos_float, default=10.0)
     cf2.add_argument("--card-path", default=None, metavar="PATH")
     cf2.set_defaults(func=cmd_conformance)
@@ -539,7 +571,23 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        return args.func(args)
+        out_path = getattr(args, "output", None)
+        if not out_path:
+            return args.func(args)
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = args.func(args)
+        if rc in (0, 1) and buf.getvalue():
+            try:
+                _write_report(out_path, buf.getvalue())
+            except OSError as e:
+                return _err(f"cannot write {out_path}: {e.strerror or e}")
+            print(f"wrote report to {out_path}", file=sys.stderr)
+        else:                        # failed run or nothing to report (e.g. --write-baseline): print as usual
+            sys.stdout.write(buf.getvalue())
+        return rc
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 2

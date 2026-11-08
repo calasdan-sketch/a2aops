@@ -6,4 +6,5 @@ local multi-agent playground. Zero dependencies.
 """
 
 __version__ = "1.3.0"
-__all__ = ["__version__"]
+__author__ = "Calas Automations Inc."
+__all__ = ["__version__", "__author__"]

@@ -1,0 +1,5 @@
+read <FIX>/card_v03.json
+ERROR E101 [supportedInterfaces]: missing required field 'supportedInterfaces'
+ERROR E111 [skills[0].tags]: missing required field 'tags'
+INFO I205 [capabilities]: streaming is enabled but pushNotifications is not; clients behind SSE-blocking proxies will need polling fallback
+--- exit 1 ---

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites><testsuite name="a2aops card-check tests/fixtures/card_bad_security_types.json" tests="8" failures="6">
+    <properties><property name="tool" value="a2aops <VERSION> (Calas Automations Inc.)"/></properties>
+    <testcase classname="a2aops.card-check" name="E120 securitySchemes.oidc.openIdConnectSecurityScheme.openIdConnectUrl"><failure type="error" message="'openIdConnectUrl' must be a string, got array containing string">'openIdConnectUrl' must be a string, got array containing string</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E120 securitySchemes.key.apiKeySecurityScheme.name"><failure type="error" message="'name' must be a string, got number">'name' must be a string, got number</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E120 securitySchemes.oauth.oauth2SecurityScheme.flows.clientCredentials.scopes"><failure type="error" message="'scopes' must be an object whose values are all strings, got an object with non-string values">'scopes' must be an object whose values are all strings, got an object with non-string values</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E120 securitySchemes.broken"><failure type="error" message="a security scheme must be an object, got string">a security scheme must be an object, got string</failure></testcase>
+    <testcase classname="a2aops.card-check" name="E120 securityRequirements[0].schemes.oidc.list"><failure type="error" message="'list' must be an array of strings, got string">'list' must be an array of strings, got string</failure></testcase>
+    <testcase classname="a2aops.card-check" name="W217 securityRequirements[0].schemes.key"><system-out>warning: scope list has no 'list' member, so no scopes are required; the v1.0 shape is {"list": [scopes]}</system-out></testcase>
+    <testcase classname="a2aops.card-check" name="E120 securityRequirements[0].schemes.oauth"><failure type="error" message='scope list must be an object like {"list": [...]}, got array containing string'>scope list must be an object like {"list": [...]}, got array containing string</failure></testcase>
+    <testcase classname="a2aops.card-check" name="W202 securitySchemes.broken"><system-out>warning: security scheme 'broken' is declared but never required — clients will not send credentials for it</system-out></testcase>
+  </testsuite></testsuites>
+--- exit 1 ---

@@ -1,0 +1,77 @@
+{
+  "tool": "a2aops",
+  "version": "<VERSION>",
+  "command": "card-diff",
+  "source": "tests/fixtures/card_v1_valid.json",
+  "strict": false,
+  "ok": false,
+  "counts": {
+    "error": 3,
+    "warning": 1,
+    "info": 6
+  },
+  "findings": [
+    {
+      "severity": "error",
+      "code": "D501",
+      "message": "interface removed: JSONRPC https://minimal.example.com/ \u2014 clients with this endpoint cached will fail",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "error",
+      "code": "D502",
+      "message": "skill removed: 'ping' \u2014 callers routing to it will fail",
+      "path": "skills[id=ping]"
+    },
+    {
+      "severity": "error",
+      "code": "D508",
+      "message": "agent now requires authentication \u2014 anonymous clients break",
+      "path": "securityRequirements"
+    },
+    {
+      "severity": "warning",
+      "code": "D604",
+      "message": "defaultOutputModes no longer includes ['text/plain']",
+      "path": "defaultOutputModes"
+    },
+    {
+      "severity": "info",
+      "code": "D701",
+      "message": "interface added: JSONRPC https://hotels.example.com/a2a/v1",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "info",
+      "code": "D701",
+      "message": "interface added: HTTP+JSON https://hotels.example.com/a2a/json",
+      "path": "supportedInterfaces"
+    },
+    {
+      "severity": "info",
+      "code": "D702",
+      "message": "skill added: 'search-and-book'",
+      "path": "skills[id=search-and-book]"
+    },
+    {
+      "severity": "info",
+      "code": "D703",
+      "message": "capability 'streaming' enabled",
+      "path": "capabilities.streaming"
+    },
+    {
+      "severity": "info",
+      "code": "D703",
+      "message": "capability 'pushNotifications' enabled",
+      "path": "capabilities.pushNotifications"
+    },
+    {
+      "severity": "info",
+      "code": "D703",
+      "message": "capability 'extendedAgentCard' enabled",
+      "path": "capabilities.extendedAgentCard"
+    }
+  ],
+  "suppressed": 0
+}
+--- exit 1 ---

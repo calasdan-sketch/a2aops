@@ -37,13 +37,13 @@
   "mutants": {
     "clean_agent": {
       "false_alarms": [],
-      "checks_run": 49,
+      "checks_run": 51,
       "skipped": 5,
-      "seconds": 1.6
+      "seconds": 2.1
     },
     "mutants": {
-      "total": 32,
-      "detected": 32,
+      "total": 33,
+      "detected": 33,
       "recall": 1.0,
       "missed": []
     },
@@ -67,6 +67,20 @@
           "REST-23",
           "RPC-08"
         ],
+        "seconds": 1.0
+      },
+      {
+        "mutant": "cors-reflect-credentials",
+        "why": "any Origin is echoed with Allow-Credentials: true",
+        "expect": [
+          "REST-30",
+          "RPC-30"
+        ],
+        "detected": true,
+        "flagged": [
+          "REST-30",
+          "RPC-30"
+        ],
         "seconds": 1.2
       },
       {
@@ -82,7 +96,7 @@
           "RPC-08",
           "RPC-09"
         ],
-        "seconds": 1.3
+        "seconds": 1.7
       },
       {
         "mutant": "rest-notfound-200",
@@ -94,7 +108,7 @@
         "flagged": [
           "REST-04"
         ],
-        "seconds": 1.1
+        "seconds": 1.2
       },
       {
         "mutant": "rest-error-500",
@@ -108,7 +122,7 @@
           "REST-04",
           "REST-05"
         ],
-        "seconds": 0.8
+        "seconds": 1.7
       },
       {
         "mutant": "ignore-version",
@@ -122,7 +136,7 @@
           "REST-03",
           "RPC-06"
         ],
-        "seconds": 0.4
+        "seconds": 1.7
       },
       {
         "mutant": "stream-wrong-ctype",
@@ -136,7 +150,7 @@
           "SSE-01",
           "SSE-10"
         ],
-        "seconds": 0.8
+        "seconds": 1.6
       },
       {
         "mutant": "stream-json-not-sse",
@@ -150,7 +164,7 @@
           "SSE-01",
           "SSE-10"
         ],
-        "seconds": 1.4
+        "seconds": 1.7
       },
       {
         "mutant": "stream-never-closes",
@@ -164,7 +178,7 @@
           "SSE-03",
           "SSE-10"
         ],
-        "seconds": 6.5
+        "seconds": 7.3
       },
       {
         "mutant": "event-after-terminal",
@@ -177,7 +191,7 @@
           "SSE-03",
           "SSE-10"
         ],
-        "seconds": 1.1
+        "seconds": 0.6
       },
       {
         "mutant": "state-v03-vocabulary",
@@ -195,7 +209,7 @@
           "SSE-04",
           "SSE-10"
         ],
-        "seconds": 0.5
+        "seconds": 0.6
       },
       {
         "mutant": "state-unspecified",
@@ -213,7 +227,7 @@
           "SSE-04",
           "SSE-10"
         ],
-        "seconds": 0.4
+        "seconds": 0.6
       },
       {
         "mutant": "send-unwrapped",
@@ -227,7 +241,7 @@
           "REST-20",
           "RPC-20"
         ],
-        "seconds": 0.5
+        "seconds": 1.0
       },
       {
         "mutant": "send-both-oneof",
@@ -239,7 +253,7 @@
         "flagged": [
           "RPC-20"
         ],
-        "seconds": 0.6
+        "seconds": 1.1
       },
       {
         "mutant": "parts-0.3-shape",
@@ -254,7 +268,7 @@
           "REST-20",
           "RPC-20"
         ],
-        "seconds": 0.6
+        "seconds": 0.9
       },
       {
         "mutant": "cancel-terminal-accepted",
@@ -268,7 +282,7 @@
           "REST-22",
           "RPC-23"
         ],
-        "seconds": 0.5
+        "seconds": 1.3
       },
       {
         "mutant": "push-not-gated",
@@ -282,7 +296,7 @@
           "REST-06",
           "RPC-10"
         ],
-        "seconds": 0.4
+        "seconds": 0.8
       },
       {
         "mutant": "extcard-not-gated",
@@ -296,7 +310,7 @@
           "REST-07",
           "RPC-11"
         ],
-        "seconds": 0.5
+        "seconds": 1.6
       },
       {
         "mutant": "stack-trace-leak",
@@ -308,7 +322,7 @@
         "flagged": [
           "RPC-15"
         ],
-        "seconds": 0.5
+        "seconds": 1.0
       },
       {
         "mutant": "rpc-id-not-echoed",
@@ -320,7 +334,7 @@
         "flagged": [
           "RPC-03"
         ],
-        "seconds": 0.6
+        "seconds": 1.9
       },
       {
         "mutant": "timestamp-offset",
@@ -350,7 +364,7 @@
           "REST-23",
           "RPC-24"
         ],
-        "seconds": 1.1
+        "seconds": 0.9
       },
       {
         "mutant": "auth-declared-not-enforced",
@@ -364,7 +378,7 @@
           "REST-10",
           "RPC-13"
         ],
-        "seconds": 0.6
+        "seconds": 1.4
       },
       {
         "mutant": "card-no-cache-control",
@@ -376,7 +390,7 @@
         "flagged": [
           "CARD-04"
         ],
-        "seconds": 0.8
+        "seconds": 0.9
       },
       {
         "mutant": "card-no-etag",
@@ -388,7 +402,7 @@
         "flagged": [
           "CARD-05"
         ],
-        "seconds": 0.8
+        "seconds": 1.6
       },
       {
         "mutant": "card-missing-name",
@@ -400,7 +414,7 @@
         "flagged": [
           "CARD-02"
         ],
-        "seconds": 1.2
+        "seconds": 1.6
       },
       {
         "mutant": "card-prompt-injection",
@@ -412,7 +426,7 @@
         "flagged": [
           "CARD-09"
         ],
-        "seconds": 1.3
+        "seconds": 1.8
       },
       {
         "mutant": "card-http-500",
@@ -426,7 +440,7 @@
           "CARD-02",
           "CARD-07"
         ],
-        "seconds": 0.1
+        "seconds": 0.0
       },
       {
         "mutant": "parse-error-wrong-code",
@@ -451,7 +465,7 @@
           "RPC-03",
           "RPC-04"
         ],
-        "seconds": 0.6
+        "seconds": 1.1
       },
       {
         "mutant": "list-bad-shape",
@@ -465,7 +479,7 @@
           "REST-08",
           "RPC-12"
         ],
-        "seconds": 0.6
+        "seconds": 1.4
       },
       {
         "mutant": "task-without-contextid",
@@ -477,7 +491,7 @@
         "flagged": [
           "RPC-22"
         ],
-        "seconds": 1.2
+        "seconds": 1.5
       },
       {
         "mutant": "legacy-names-accepted",
@@ -489,7 +503,7 @@
         "flagged": [
           "RPC-04"
         ],
-        "seconds": 1.2
+        "seconds": 1.5
       }
     ]
   },
@@ -508,7 +522,7 @@
     "loaded": 3017,
     "rejected_cleanly": 2983,
     "crashes": [],
-    "seconds": 12.3
+    "seconds": 13.1
   },
   "measured_once": {
     "a2aops 1.2.0 (round 1, commit 53fe4c9) on the same cards": {
@@ -527,5 +541,11 @@
       "precision": 1.0,
       "recall": 0.923
     }
+  },
+  "source_mutants": {
+    "total": 29,
+    "killed": 29,
+    "survived": [],
+    "skipped": []
   }
 }

@@ -1,0 +1,14 @@
+diff <FIX>/card_v1_valid.json -> <FIX>/card_v1_minimal.json
+ERROR D501 [supportedInterfaces]: interface removed: JSONRPC https://hotels.example.com/a2a/v1 — clients with this endpoint cached will fail
+ERROR D501 [supportedInterfaces]: interface removed: HTTP+JSON https://hotels.example.com/a2a/json — clients with this endpoint cached will fail
+ERROR D502 [skills[id=search-and-book]]: skill removed: 'search-and-book' — callers routing to it will fail
+ERROR D505 [defaultInputModes]: defaultInputModes no longer includes ['application/json']
+ERROR D506 [capabilities.streaming]: capability 'streaming' was turned off — clients relying on it break
+ERROR D506 [capabilities.pushNotifications]: capability 'pushNotifications' was turned off — clients relying on it break
+ERROR D506 [capabilities.extendedAgentCard]: capability 'extendedAgentCard' was turned off — clients relying on it break
+WARNING D604 [defaultOutputModes]: defaultOutputModes no longer includes ['application/json']
+WARNING D605 [securityRequirements]: agent: authentication requirements were removed; confirm this is intentional
+WARNING D608 [version]: breaking changes found but major version did not increase (2.3.0 -> 0.1.0)
+INFO D701 [supportedInterfaces]: interface added: JSONRPC https://minimal.example.com/
+INFO D702 [skills[id=ping]]: skill added: 'ping'
+--- exit 1 ---
